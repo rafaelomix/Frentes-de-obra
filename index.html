@@ -57,7 +57,7 @@ table.dims td:last-child{text-align:right;font-weight:700;font-variant-numeric:t
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 #modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:20}
 #modal[hidden]{display:none}
-#modal .box{background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:16px 16px 22px}
+#modal .box{background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:16px 16px 22px;max-height:92vh;overflow:auto}
 #modal h3{margin:0 0 10px;font-size:18px}
 #modal .fld{margin-bottom:10px}
 #modal .fld label{font-size:13px;color:var(--mut);display:block;margin-bottom:4px}
@@ -98,6 +98,22 @@ function geom(f,c){
   return {m,meas,fin};
 }
 const dist=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1]);
+const ENT={1:'sencillo',2:'doble',3:'triple',4:'cuádruple'};
+function encGeom(e,p){
+  const h=num(e.h),v=num(e.v);if(h==null||v==null)return null;
+  const n=+e.n||1,sep=num(p.sep)||71;
+  const cx=e.lado==='izq'?-h:h,cy=e.vpos==='abajo'?-v:v,pts=[];
+  for(let i=0;i<n;i++){const o=(i-(n-1)/2)*sep;pts.push(e.ori==='v'?[cx,cy+o]:[cx+o,cy]);}
+  return{c:[cx,cy],pts};
+}
+function edgeDist(fin,c){
+  const[TL,TR,BR,BL]=fin;
+  const xl=BL[0]+(c[1]-BL[1])*(TL[0]-BL[0])/((TL[1]-BL[1])||1);
+  const yb=BL[1]+(c[0]-BL[0])*(BR[1]-BL[1])/((BR[0]-BL[0])||1);
+  return{izq:c[0]-xl,abajo:c[1]-yb};
+}
+function inPoly(pt,poly){let ins=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const[xi,yi]=poly[i],[xj,yj]=poly[j];if((yi>pt[1])!==(yj>pt[1])&&pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi)ins=!ins;}return ins;}
+function encDesc(e){return 'Enchufe '+(ENT[e.n]||'sencillo')+(+e.n>1?(e.ori==='v'?' vertical':' horizontal'):'')+': '+(e.lado==='izq'?'izq':'dcha')+' '+fmt(num(e.h)||0)+', '+(e.vpos==='abajo'?'abajo':'arriba')+' '+fmt(num(e.v)||0);}
 function dims(p){const[TL,TR,BR,BL]=p;return{top:dist(TL,TR),bottom:dist(BL,BR),left:dist(TL,BL),right:dist(TR,BR),d1:dist(TL,BR),d2:dist(BL,TR)};}
 function bbox(pts){let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;for(const p of pts){a=Math.min(a,p[0]);b=Math.min(b,p[1]);c=Math.max(c,p[0]);d=Math.max(d,p[1]);}return{minX:a,minY:b,maxX:c,maxY:d,w:c-a,h:d-b};}
 function fmt(n){return String(Math.round(n*10)/10).replace('.',',');}
@@ -106,57 +122,85 @@ function dxfEsc(s){return String(s).replace(/[^\x20-\x7e]/g,ch=>'\\U+'+ch.charCo
 function D(v){return String(Math.round(v*1000)/1000);}
 
 function buildDXF(promo,pisos){
-  const E=[],c=promo.cuts,H=35;
+  const E=[],c=promo.cuts,H=35,HO=25;
+  const LY_OBRA='0_obracotas',LY_GEN='Ex_cotas';
   const L=(ly,a,b)=>E.push('0','LINE','8',ly,'10',D(a[0]),'20',D(a[1]),'30','0','11',D(b[0]),'21',D(b[1]),'31','0');
   const T=(ly,p,h,s,rot,al)=>E.push('0','TEXT','8',ly,'10',D(p[0]),'20',D(p[1]),'30','0','40',D(h),'1',dxfEsc(s),'50',D(rot||0),'72',String(al||0),'11',D(p[0]),'21',D(p[1]),'31','0');
+  const CI=(ly,p,r)=>E.push('0','CIRCLE','8',ly,'10',D(p[0]),'20',D(p[1]),'30','0','40',D(r));
   const PL=(ly,pts)=>{E.push('0','POLYLINE','8',ly,'66','1','10','0','20','0','30','0','70','1');for(const p of pts)E.push('0','VERTEX','8',ly,'10',D(p[0]),'20',D(p[1]),'30','0');E.push('0','SEQEND','8',ly);};
-  const cota=(a,b,cen,txt)=>{
+  const txtAng=(ux,uy)=>{let ang=Math.atan2(uy,ux)*180/Math.PI;if(ang>90)ang-=180;if(ang<=-90)ang+=180;return ang;};
+  // Cota sobre la propia línea a-b (cotas de obra y de enchufes)
+  const dimLine=(ly,a,b,h)=>{
+    const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);if(len<1)return;
+    const ux=dx/len,uy=dy/len,nx=-uy,ny=ux;
+    L(ly,a,b);
+    const tx=(ux+nx)/Math.SQRT2*10,ty=(uy+ny)/Math.SQRT2*10;
+    L(ly,[a[0]-tx,a[1]-ty],[a[0]+tx,a[1]+ty]);L(ly,[b[0]-tx,b[1]-ty],[b[0]+tx,b[1]+ty]);
+    const ang=txtAng(ux,uy),r=ang*Math.PI/180,upx=-Math.sin(r),upy=Math.cos(r);
+    T(ly,[(a[0]+b[0])/2+upx*8,(a[1]+b[1])/2+upy*8],h,fmt(len),ang,1);
+  };
+  // Cota exterior paralela al lado a-b (cotas generales de la pieza)
+  const cota=(ly,a,b,cen)=>{
     const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);if(len<1)return;
     const ux=dx/len,uy=dy/len;let nx=-uy,ny=ux;const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
     if((mx-cen[0])*nx+(my-cen[1])*ny<0){nx=-nx;ny=-ny;}
     const off=90,a2=[a[0]+nx*off,a[1]+ny*off],b2=[b[0]+nx*off,b[1]+ny*off];
-    L('COTAS',[a[0]+nx*15,a[1]+ny*15],[a2[0]+nx*20,a2[1]+ny*20]);
-    L('COTAS',[b[0]+nx*15,b[1]+ny*15],[b2[0]+nx*20,b2[1]+ny*20]);
-    L('COTAS',a2,b2);
+    L(ly,[a[0]+nx*15,a[1]+ny*15],[a2[0]+nx*20,a2[1]+ny*20]);
+    L(ly,[b[0]+nx*15,b[1]+ny*15],[b2[0]+nx*20,b2[1]+ny*20]);
+    L(ly,a2,b2);
     const tx=(ux+nx)/Math.SQRT2*12,ty=(uy+ny)/Math.SQRT2*12;
-    L('COTAS',[a2[0]-tx,a2[1]-ty],[a2[0]+tx,a2[1]+ty]);L('COTAS',[b2[0]-tx,b2[1]-ty],[b2[0]+tx,b2[1]+ty]);
-    let ang=Math.atan2(uy,ux)*180/Math.PI;if(ang>90)ang-=180;if(ang<=-90)ang+=180;
-    const r=ang*Math.PI/180,upx=-Math.sin(r),upy=Math.cos(r);
+    L(ly,[a2[0]-tx,a2[1]-ty],[a2[0]+tx,a2[1]+ty]);L(ly,[b2[0]-tx,b2[1]-ty],[b2[0]+tx,b2[1]+ty]);
+    const ang=txtAng(ux,uy),r=ang*Math.PI/180,upx=-Math.sin(r),upy=Math.cos(r);
     const k=(nx*upx+ny*upy)<0?(12+H):12;
-    T('COTAS',[(a2[0]+b2[0])/2+nx*k,(a2[1]+b2[1])/2+ny*k],H,txt,ang,1);
+    T(ly,[(a2[0]+b2[0])/2+nx*k,(a2[1]+b2[1])/2+ny*k],H,fmt(len),ang,1);
   };
   let cy=0;
-  T('TEXTO',[0,cy],70,promo.title||'Promoción',0,0);cy-=250;
   for(const piso of pisos){
-    T('TEXTO',[0,cy],55,'Piso: '+(piso.title||''),0,0);
-    const rowTop=cy-200;let x=0,rowH=0;const falt=[];
-    piso.frentes.forEach((f,i)=>{
-      const g=geom(f,c),nm=f.name||('Frente '+(i+1));
-      if(!g){falt.push(nm);return;}
-      const bb=bbox([...g.meas,...g.fin,[0,0]]);
-      const dx=x-bb.minX+180,dy=rowTop-bb.maxY-180;
+    const rowTop=cy-200;let x=0,rowH=0,any=false;
+    T('TEXTO',[0,cy],70,piso.title||'',0,0);
+    piso.frentes.forEach(f=>{
+      const g=geom(f,c);if(!g)return;any=true;
+      const encs=(f.enchufes||[]).map(e=>({e,g:encGeom(e,promo)})).filter(q=>q.g);
+      const R=(num(promo.dia)||70)/2;
+      const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(q=>q.g.pts.flatMap(t=>[[t[0]-R,t[1]-R],[t[0]+R,t[1]+R]]))]);
+      const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200;
       const S=p=>[p[0]+dx,p[1]+dy];
-      const meas=g.meas.map(S),fin=g.fin.map(S),o=S([0,0]);
+      const meas=g.meas.map(S),fin=g.fin.map(S),o=S([0,0]),m=g.m;
       PL('MEDIDAS',meas);
-      L('LASER',[bb.minX+dx-40,o[1]],[bb.maxX+dx+40,o[1]]);L('LASER',[o[0],bb.minY+dy-40],[o[0],bb.maxY+dy+40]);
-      PL('FRENTE',fin);
-      const d=dims(fin),cen=[(fin[0][0]+fin[2][0])/2,(fin[0][1]+fin[2][1])/2];
-      cota(fin[0],fin[1],cen,fmt(d.top));cota(fin[3],fin[2],cen,fmt(d.bottom));
-      cota(fin[0],fin[3],cen,fmt(d.left));cota(fin[1],fin[2],cen,fmt(d.right));
-      const m=g.m;let ty=bb.minY+dy-230;const tx=bb.minX+dx;
-      const lines=[(piso.title||'')+' · '+nm,
-        'Diagonal TL-BR: '+fmt(d.d1)+'   Diagonal BL-TR: '+fmt(d.d2),
-        'Láser izq: pared arr '+fmt(m.lt)+' / ab '+fmt(m.lb)+', techo '+fmt(m.ul)+', mueble '+fmt(m.dl),
-        'Láser dcha: pared arr '+fmt(m.rt)+' / ab '+fmt(m.rb)+', techo '+fmt(m.ur)+', mueble '+fmt(m.dr),
-        'Descuentos: arriba '+fmt(c.t)+', abajo '+fmt(c.b)+', izq '+fmt(c.l)+', dcha '+fmt(c.r)+' (mm)'];
-      lines.forEach((s,j)=>T('TEXTO',[tx,ty-j*55],j?30:40,s,0,0));
-      x+=bb.w+360+Math.max(0,700);
-      rowH=Math.max(rowH,bb.h+360+230+lines.length*55);
+      L(LY_OBRA,[bb.minX+dx-40,o[1]],[bb.maxX+dx+40,o[1]]);L(LY_OBRA,[o[0],bb.minY+dy-40],[o[0],bb.maxY+dy+40]);
+      PL('Exterior',fin);
+      // Cotas de obra: desde las líneas del láser
+      dimLine(LY_OBRA,S([0,m.ul-60]),S([-m.lt,m.ul-60]),HO);
+      dimLine(LY_OBRA,S([0,-m.dl+60]),S([-m.lb,-m.dl+60]),HO);
+      dimLine(LY_OBRA,S([0,m.ur-60]),S([m.rt,m.ur-60]),HO);
+      dimLine(LY_OBRA,S([0,-m.dr+60]),S([m.rb,-m.dr+60]),HO);
+      dimLine(LY_OBRA,S([-m.lt+60,0]),S([-m.lt+60,m.ul]),HO);
+      dimLine(LY_OBRA,S([-m.lb+60,0]),S([-m.lb+60,-m.dl]),HO);
+      dimLine(LY_OBRA,S([m.rt-60,0]),S([m.rt-60,m.ur]),HO);
+      dimLine(LY_OBRA,S([m.rb-60,0]),S([m.rb-60,-m.dr]),HO);
+      // Cotas generales de la pieza
+      const cen=[(fin[0][0]+fin[2][0])/2,(fin[0][1]+fin[2][1])/2];
+      cota(LY_GEN,fin[0],fin[1],cen);cota(LY_GEN,fin[3],fin[2],cen);
+      cota(LY_GEN,fin[0],fin[3],cen);cota(LY_GEN,fin[1],fin[2],cen);
+      // Enchufes
+      encs.forEach(q=>{
+        q.g.pts.forEach(t=>CI('0_interior',S(t),R));
+        const ec=q.g.c,gb=bbox(q.g.pts);
+        dimLine(LY_OBRA,S([0,ec[1]]),S(ec),HO);
+        dimLine(LY_OBRA,S([ec[0],0]),S(ec),HO);
+        const[TL,TR,BR,BL]=g.fin;
+        const xl=BL[0]+(ec[1]-BL[1])*(TL[0]-BL[0])/((TL[1]-BL[1])||1);
+        const yb=BL[1]+(ec[0]-BL[0])*(BR[1]-BL[1])/((BR[0]-BL[0])||1);
+        const yh=gb.minY-R-30,xv=gb.maxX+R+30;
+        dimLine(LY_GEN,S([xl,yh]),S([ec[0],yh]),HO);
+        dimLine(LY_GEN,S([xv,yb]),S([xv,ec[1]]),HO);
+      });
+      x+=bb.w+400+700;
+      rowH=Math.max(rowH,bb.h+400);
     });
-    if(falt.length)T('TEXTO',[0,rowTop-rowH-60],30,'Sin medidas completas: '+falt.join(', '),0,0);
-    cy=rowTop-rowH-(falt.length?200:120)-150;
+    cy=rowTop-(any?rowH:0)-400;
   }
-  const layers=[['0',7],['FRENTE',7],['COTAS',3],['TEXTO',2],['MEDIDAS',8],['LASER',1]];
+  const layers=[['0',7],['Exterior',7],['0_interior',4],[LY_OBRA,6],[LY_GEN,3],['TEXTO',2],['MEDIDAS',8]];
   const s=['0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','0','ENDSEC',
    '0','SECTION','2','TABLES','0','TABLE','2','LTYPE','70','1','0','LTYPE','2','CONTINUOUS','70','0','3','Solid line','72','65','73','0','40','0.0','0','ENDTAB',
    '0','TABLE','2','LAYER','70',String(layers.length)];
@@ -296,11 +340,11 @@ function modal({title,text,fields=[],buttons}){
   return new Promise(res=>{
     const box=$('#mbox');
     box.innerHTML=`<h3>${esc(title||'')}</h3>${text?`<p class="note" style="font-size:15px">${esc(text)}</p>`:''}`+
-      fields.map((f,i)=>`<div class="fld"><label>${esc(f.label||'')}</label><input class="in" data-i="${i}" type="text" ${f.num?'inputmode="decimal"':''} value="${esc(f.value==null?'':f.value)}" placeholder="${esc(f.ph||'')}"></div>`).join('')+
+      fields.map((f,i)=>`<div class="fld"><label>${esc(f.label||'')}</label>${f.sel?`<select class="in" data-i="${i}">${f.sel.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(f.value)?'selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input class="in" data-i="${i}" type="text" ${f.num?'inputmode="decimal"':''} value="${esc(f.value==null?'':f.value)}" placeholder="${esc(f.ph||'')}">`}</div>`).join('')+
       `<div class="btns">${buttons.map((b,i)=>`<button class="btn ${b.pri?'pri':''} ${b.dang?'dang':''}" data-b="${i}">${esc(b.label)}</button>`).join('')}</div>`;
     $('#modal').hidden=false;
-    const ins=[...box.querySelectorAll('input')];
-    if(ins[0])setTimeout(()=>{ins[0].focus();ins[0].select();},50);
+    const ins=[...box.querySelectorAll('input,select')];
+    const fi=box.querySelector('input');if(fi&&!fields.some(f=>f.sel))setTimeout(()=>{fi.focus();fi.select();},50);
     const done=v=>{$('#modal').hidden=true;box.innerHTML='';res({v,values:ins.map(i=>i.value)});};
     box.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>done(buttons[+b.dataset.b].v));
     ins.forEach(i=>i.onkeydown=e=>{if(e.key==='Enter'){const p=buttons.find(b=>b.pri);done(p?p.v:'ok');}});
@@ -360,7 +404,9 @@ function renderPromo(app){
   const p=P();$('#ttl').textContent=p.title;
   app.innerHTML=`<div class="card"><div class="ttl"><b>${esc(p.title)}</b><button class="btn sm" data-act="renPromo">Renombrar</button></div></div>
   <div class="card"><div style="font-weight:600;margin-bottom:8px">Descuentos sobre la medida (mm)</div>
-   <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-cut="${k}" value="${esc(fmt(p.cuts[k]))}"></label>`).join('')}</div></div>
+   <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-cut="${k}" value="${esc(fmt(p.cuts[k]))}"></label>`).join('')}</div>
+   <div style="font-weight:600;margin:12px 0 8px">Enchufes (mm)</div>
+   <div class="grid2"><label class="note">Ø agujero<input class="in" inputmode="decimal" data-pset="dia" value="${esc(fmt(num(p.dia)||70))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-pset="sep" value="${esc(fmt(num(p.sep)||71))}"></label></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     return `<button class="item" data-act="openPiso" data-id="${pi.id}"><div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
@@ -372,6 +418,7 @@ function renderPromo(app){
    <button class="btn full" data-act="dxfPromo">DXF + fotos anotadas</button>
    <p class="note" style="margin:4px 2px 0">Lo mismo, más un DXF con todos los pisos y las fotos anotadas.</p>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPromo">Borrar promoción</button>`;
+  app.querySelectorAll('[data-pset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0){p[i.dataset.pset]=v;Store.save(p);}});
   app.querySelectorAll('[data-cut]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null){p.cuts[i.dataset.cut]=v;Store.save(p);}});
 }
 
@@ -414,6 +461,10 @@ function renderFrente(app){
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
   `<div class="card"><div style="font-weight:600;margin-bottom:10px">Medidas desde el láser (mm)</div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div>
+   <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes</div>
+    <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(num(p.dia)||70)}, separación ${fmt(num(p.sep)||71)} mm.</div>
+    ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
+    <button class="btn full" data-act="addEnc">+ Añadir enchufe</button></div>
    <div class="card"><div style="font-weight:600;margin-bottom:6px">Pieza resultante</div><div class="note" style="margin-bottom:8px">Descuentos: arriba ${fmt(p.cuts.t)}, abajo ${fmt(p.cuts.b)}, izq ${fmt(p.cuts.l)}, dcha ${fmt(p.cuts.r)} mm</div><div id="prev" class="prev"></div></div>
    <button class="btn pri full" data-act="dxfFrente">Descargar DXF de este frente</button>
    <button class="btn full" style="margin-top:8px" data-act="copyDxf">Copiar DXF (texto)</button>
@@ -429,7 +480,9 @@ function renderFrente(app){
 function renderPrev(){
   const el=$('#prev');if(!el)return;const p=P(),f=F(),g=geom(f,p.cuts);
   if(!g){el.innerHTML=`<div class="empty">Faltan ${8-filled(f)} medida${8-filled(f)==1?'':'s'} para dibujar la pieza.</div>`;return;}
-  const bb=bbox([...g.meas,...g.fin,[0,0]]),sz=Math.max(bb.w,bb.h),pad=sz*0.12,fs=sz/18;
+  const R=(num(p.dia)||70)/2,encs=(f.enchufes||[]).map((e,i)=>({i,e,g:encGeom(e,p)})).filter(x=>x.g);
+  const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(x=>x.g.pts)]),sz=Math.max(bb.w,bb.h),pad=sz*0.12,fs=sz/18;
+  const out=encs.filter(x=>x.g.pts.some(q=>!inPoly(q,g.fin)));
   const pt=a=>a.map(q=>`${q[0]},${-q[1]}`).join(' ');
   const d=dims(g.fin),fin=g.fin,cen=[(fin[0][0]+fin[2][0])/2,(fin[0][1]+fin[2][1])/2];
   const lab=(a,b,v)=>{const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1;let nx=-dy/l,ny=dx/l;if((mx-cen[0])*nx+(my-cen[1])*ny<0){nx=-nx;ny=-ny;}
@@ -439,11 +492,14 @@ function renderPrev(){
    <line x1="0" y1="${-bb.maxY-pad/2}" x2="0" y2="${-bb.minY+pad/2}" stroke="#dc2626" stroke-dasharray="${fs/2} ${fs/3}" vector-effect="non-scaling-stroke"/>
    <polygon points="${pt(g.meas)}" fill="none" stroke="#9ca3af" stroke-dasharray="${fs/2} ${fs/3}" vector-effect="non-scaling-stroke"/>
    <polygon points="${pt(g.fin)}" fill="#fed7aa" fill-opacity=".55" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>
-   ${lab(fin[0],fin[1],d.top)}${lab(fin[3],fin[2],d.bottom)}${lab(fin[0],fin[3],d.left)}${lab(fin[1],fin[2],d.right)}</svg>
+   ${lab(fin[0],fin[1],d.top)}${lab(fin[3],fin[2],d.bottom)}${lab(fin[0],fin[3],d.left)}${lab(fin[1],fin[2],d.right)}
+   ${encs.map(x=>x.g.pts.map(q=>`<circle cx="${q[0]}" cy="${-q[1]}" r="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`).join('')+`<text x="${x.g.c[0]}" y="${-(x.g.c[1]+R*(x.e.ori==='v'?(+x.e.n||1):1)+fs*0.4)}" font-size="${fs*0.8}" text-anchor="middle" fill="#2563eb" font-weight="700">E${x.i+1}</text>`).join('')}</svg>
+   ${out.length?`<div class="warn" style="margin-top:8px">⚠ ${out.map(x=>'E'+(x.i+1)).join(', ')} se sale de la pieza. Revisa las medidas.</div>`:''}
    <table class="dims"><tr><td>Lado de arriba</td><td>${fmt(d.top)} mm</td></tr><tr><td>Lado de abajo</td><td>${fmt(d.bottom)} mm</td></tr>
    <tr><td>Altura izquierda</td><td>${fmt(d.left)} mm</td></tr><tr><td>Altura derecha</td><td>${fmt(d.right)} mm</td></tr>
    <tr><td>Diagonal ↘ (arriba izq → abajo dcha)</td><td>${fmt(d.d1)} mm</td></tr><tr><td>Diagonal ↗ (abajo izq → arriba dcha)</td><td>${fmt(d.d2)} mm</td></tr>
-   <tr><td>Ancho máximo × alto máximo</td><td>${fmt(bbox(fin).w)} × ${fmt(bbox(fin).h)}</td></tr></table>`;
+   <tr><td>Ancho máximo × alto máximo</td><td>${fmt(bbox(fin).w)} × ${fmt(bbox(fin).h)}</td></tr>
+   ${encs.map(x=>{const ed=edgeDist(g.fin,x.g.c);return `<tr><td>E${x.i+1} eje: desde borde izq / desde abajo</td><td>${fmt(ed.izq)} / ${fmt(ed.abajo)}</td></tr>`;}).join('')}</table>`;
 }
 
 // ---------- Foto anotada ----------
@@ -552,6 +608,27 @@ async function editMeasure(k){
   drawCanvas();renderPrev();
   if(r.v==='next'){const i=KEYS.indexOf(k);const nx=KEYS.slice(i+1).concat(KEYS.slice(0,i)).find(q=>num(f.m[q])==null);if(nx)editMeasure(nx);else toast('Todas las medidas puestas');}
 }
+async function encForm(i){
+  const p=P(),f=F();f.enchufes=f.enchufes||[];
+  const e=i==null?{lado:'dcha',h:'',vpos:'arriba',v:'',n:1,ori:'h'}:f.enchufes[i];
+  const r=await modal({title:i==null?'Añadir enchufe':'Enchufe E'+(i+1),fields:[
+    {label:'Lado respecto a la línea vertical del láser',sel:[['izq','A la izquierda'],['dcha','A la derecha']],value:e.lado},
+    {label:'Distancia horizontal desde la línea vertical hasta el eje (mm)',value:e.h,num:true,ph:'mm'},
+    {label:'Respecto a la línea horizontal del láser',sel:[['arriba','Por encima'],['abajo','Por debajo']],value:e.vpos},
+    {label:'Distancia vertical desde la línea horizontal hasta el eje (mm)',value:e.v,num:true,ph:'mm'},
+    {label:'Tipo',sel:[['1','Sencillo'],['2','Doble'],['3','Triple'],['4','Cuádruple']],value:String(e.n||1)},
+    {label:'Disposición (doble, triple o cuádruple)',sel:[['h','Horizontal'],['v','Vertical']],value:e.ori||'h'}],
+    buttons:i==null?[{label:'Cancelar',v:null},{label:'Añadir',v:'ok',pri:true}]:[{label:'Borrar',v:'del',dang:true},{label:'Cancelar',v:null},{label:'Guardar',v:'ok',pri:true}]});
+  if(!r.v)return;
+  if(r.v==='del'){f.enchufes.splice(i,1);}
+  else{
+    const[lado,h,vpos,v,n,ori]=r.values;
+    if(num(h)==null||num(v)==null){toast('Faltan las distancias');return;}
+    const ne={lado,h:h.trim(),vpos,v:v.trim(),n:+n,ori};
+    if(i==null)f.enchufes.push(ne);else f.enchufes[i]=ne;
+  }
+  Store.save(p);render();
+}
 async function addNote(x,y){const t=await askText('Nueva nota','Texto','','p. ej. enchufe, ventana…');if(!t)return;const f=F();(f.notes=f.notes||[]).push({x,y,t});Store.save(P());drawCanvas();}
 async function editNote(i){
   const f=F(),n=f.notes[i];
@@ -608,6 +685,8 @@ const A={
   async renFrente(){const f=F(),pi=PI(),t=await askText('Renombrar frente','Nombre',f.name||('Frente '+(pi.frentes.indexOf(f)+1)));if(t){f.name=t;Store.save(P());render();}},
   async delFrente(){const p=P(),pi=PI(),f=F();if(!await confirmDel('este frente'))return;pi.frentes=pi.frentes.filter(x=>x!==f);Store.save(p);go({v:'piso',p:p.id,pi:pi.id});},
   mode(d){mode=d.m;render();},
+  addEnc(){encForm(null);},
+  editEnc(d){encForm(+d.i);},
   dcol(d){drawColor=d.c;try{localStorage.setItem('fc_dc',drawColor);}catch(e){}render();},
   dw(d){drawW=+d.w;try{localStorage.setItem('fc_dw',String(drawW));}catch(e){}render();},
   dundo(){const f=F();if(f.draw&&f.draw.length){f.draw.pop();Store.save(P());drawCanvas();}},
@@ -662,7 +741,7 @@ async function onPhoto(e){
 $('#fCam').onchange=onPhoto;$('#fGal').onchange=onPhoto;
 function newFrente(ref){
   const p=P(),pi=PI();
-  const f={id:uid(),name:'Frente '+(pi.frentes.length+1),photo:ref,cx:.5,cy:.55,m:{},notes:[]};
+  const f={id:uid(),name:'Frente '+(pi.frentes.length+1),photo:ref,cx:.5,cy:.55,m:{},notes:[],enchufes:[]};
   pi.frentes.push(f);Store.save(p);go({v:'frente',p:p.id,pi:pi.id,f:f.id});
 }
 async function onImport(e){
@@ -675,7 +754,7 @@ async function onImport(e){
     if(incFotos)for(const [k,du] of Object.entries(d.photos||{})){try{const b=await (await fetch(du)).blob();map[k]=await Store.savePhoto(b);}catch(_){}}
     const oldPh={};for(const op of S.promos)for(const pi of op.pisos)for(const f of pi.frentes)if(f.photo)oldPh[f.id]=f.photo;
     for(const p of d.promos){
-      for(const pi of p.pisos||[])for(const f of pi.frentes||[]){const k=f.photo?JSON.stringify(f.photo):null;f.photo=(k&&map[k])||oldPh[f.id]||null;f.m=f.m||{};f.notes=f.notes||[];f.draw=f.draw||[];}
+      for(const pi of p.pisos||[])for(const f of pi.frentes||[]){const k=f.photo?JSON.stringify(f.photo):null;f.photo=(k&&map[k])||oldPh[f.id]||null;f.m=f.m||{};f.notes=f.notes||[];f.draw=f.draw||[];f.enchufes=f.enchufes||[];}
       p.cuts=p.cuts||{t:2,b:12,l:2,r:2};
       S.promos=S.promos.filter(x=>x.id!==p.id);S.promos.push(p);Store.save(p);
     }
