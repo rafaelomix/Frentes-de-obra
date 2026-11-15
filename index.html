@@ -91,7 +91,8 @@ table.dims td:last-child{text-align:right;font-weight:700;font-variant-numeric:t
 <script>
 // ===== PURE-START (geometría, DXF, ZIP) =====
 const KEYS=['ul','lt','lb','dl','ur','rt','rb','dr'];
-const MIRROR={lt:'rt',lb:'rb',ul:'ur',dl:'dr'};
+const MIRROR={lt:'lb',rt:'rb',ul:'ur',dl:'dr'};
+const PAIRC={lt:'#2563eb',lb:'#2563eb',rt:'#16a34a',rb:'#16a34a',ul:'#9333ea',ur:'#9333ea',dl:'#d97706',dr:'#d97706'};
 const KLAB={lt:'Izq · rayo → pared (arriba)',lb:'Izq · rayo → pared (abajo)',ul:'Izq · rayo → techo',dl:'Izq · rayo → mueble',
  rt:'Dcha · rayo → pared (arriba)',rb:'Dcha · rayo → pared (abajo)',ur:'Dcha · rayo → techo',dr:'Dcha · rayo → mueble'};
 const KSHORT={ul:'↑ Techo',lt:'← Pared arriba',lb:'← Pared abajo',dl:'↓ Mueble',ur:'↑ Techo',rt:'Pared arriba →',rb:'Pared abajo →',dr:'↓ Mueble'};
@@ -421,7 +422,10 @@ const Store={
       for(const id of [...new Set(LS.get('fc_phq',[]))]){
         const b=await this.localBlob(id);
         if(b){const buf=new Uint8Array(await b.arrayBuffer());let bin='';for(let i=0;i<buf.length;i+=0x8000)bin+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));
-          await gsApi('photoUp',{name:id,b64:btoa(bin)});}
+          await gsApi('photoUp',{name:id,b64:btoa(bin)});
+          // la promoción que usa esta foto se vuelve a guardar para que Drive la coloque en su carpeta
+          const owner=S.promos.find(p=>p.pisos.some(pi=>pi.frentes.some(f=>f.photo&&f.photo.g===id)));
+          if(owner){const pe=new Set(LS.get('fc_pend',[]));pe.add(owner.id);LS.set('fc_pend',[...pe]);}}
         LS.set('fc_phq',LS.get('fc_phq',[]).filter(x=>x!==id));
       }
       for(const id of LS.get('fc_del',[])){await gsApi('delete',{id});LS.set('fc_del',LS.get('fc_del',[]).filter(x=>x!==id));const k=new Set(LS.get('fc_known',[]));k.delete(id);LS.set('fc_known',[...k]);}
@@ -644,9 +648,9 @@ function renderPiso(app){
 function crossSVG(){
   return `<svg viewBox="0 0 120 120" aria-hidden="true"><rect x="8" y="8" width="104" height="104" fill="#fff" stroke="#9ca3af" stroke-width="2"/>
   <line x1="8" y1="64" x2="112" y2="64" stroke="#dc2626" stroke-width="2" stroke-dasharray="5 3"/><line x1="60" y1="8" x2="60" y2="112" stroke="#dc2626" stroke-width="2" stroke-dasharray="5 3"/>
-  <g stroke="#ea580c" stroke-width="2" fill="#ea580c">
-  <line x1="60" y1="30" x2="12" y2="30"/><line x1="60" y1="94" x2="12" y2="94"/><line x1="60" y1="30" x2="108" y2="30"/><line x1="60" y1="94" x2="108" y2="94"/>
-  <line x1="20" y1="64" x2="20" y2="12"/><line x1="20" y1="64" x2="20" y2="108"/><line x1="100" y1="64" x2="100" y2="12"/><line x1="100" y1="64" x2="100" y2="108"/></g>
+  <g stroke-width="2.5">
+  <line x1="60" y1="30" x2="12" y2="30" stroke="#2563eb"/><line x1="60" y1="94" x2="12" y2="94" stroke="#2563eb"/><line x1="60" y1="30" x2="108" y2="30" stroke="#16a34a"/><line x1="60" y1="94" x2="108" y2="94" stroke="#16a34a"/>
+  <line x1="20" y1="64" x2="20" y2="12" stroke="#9333ea"/><line x1="20" y1="64" x2="20" y2="108" stroke="#d97706"/><line x1="100" y1="64" x2="100" y2="12" stroke="#9333ea"/><line x1="100" y1="64" x2="100" y2="108" stroke="#d97706"/></g>
   <text x="60" y="122" font-size="9" text-anchor="middle" fill="#6b7280">encimera</text></svg>`;
 }
 
@@ -654,7 +658,7 @@ function renderFrente(app){
   const p=P(),pi=PI(),f=F(),idx=pi.frentes.indexOf(f);
   const name=f.name||('Frente '+(idx+1));
   $('#ttl').textContent=pi.title+' · '+name;
-  const inp=k=>`<label>${esc(KSHORT[k])}<input class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"></label>`;
+  const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}${MIRROR[k]?' ⇢':''}<input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"></label>`;
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>${esc(name)}</b><button class="btn sm" data-act="renFrente">Renombrar</button></div></div>`+
   (f.photo?`<div class="tools"><button class="btn sm ${mode==='med'?'on':''}" data-act="mode" data-m="med">Medidas</button><button class="btn sm ${mode==='laser'?'on':''}" data-act="mode" data-m="laser">Mover láser</button><button class="btn sm ${mode==='nota'?'on':''}" data-act="mode" data-m="nota">Nota</button><button class="btn sm ${mode==='draw'?'on':''}" data-act="mode" data-m="draw">✏️ Dibujar</button></div>
    ${mode==='draw'?`<div class="dtools">${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
@@ -664,7 +668,7 @@ function renderFrente(app){
    <div class="cvwrap"><canvas id="cv"></canvas></div>
    <div class="grid2" style="margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
-  `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Lo que escribas a la izquierda se copia a la derecha; luego corrige la derecha si es distinta.</div>
+  `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Las casillas del mismo color van enlazadas: lo que escribas en la marcada con ⇢ se copia a su pareja (pared arriba → pared abajo, techo y mueble izquierda → derecha). Luego corrige la pareja si es distinta.</div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div>
    <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes</div>
     <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm.</div>
@@ -749,7 +753,7 @@ function drawAnnot(ctx,img,W,H,f,collect){
     const tw=ctx.measureText(t).width,bw=Math.max(tw+18*s,40*s),bh=36*s,cx=(a[0]+b[0])/2,cy=(a[1]+b[1])/2;
     const r={k,x:cx-bw/2,y:cy-bh/2,w:bw,h:bh};
     ctx.fillStyle=v==null?'#ea580c':'rgba(17,24,39,.9)';rr(ctx,r.x,r.y,r.w,r.h,8*s);ctx.fill();
-    ctx.strokeStyle='#facc15';ctx.lineWidth=2*s;ctx.stroke();
+    ctx.strokeStyle=PAIRC[k];ctx.lineWidth=3.5*s;ctx.stroke();
     ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,cx,cy+1*s);
     out.push(r);
   }
