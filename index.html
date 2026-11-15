@@ -304,6 +304,7 @@ let S={promos:[]};
 let route={v:'home'};
 let mode='med'; // med | laser | nota
 let drawColor='#ef4444',drawW=4;try{drawColor=localStorage.getItem('fc_dc')||drawColor;drawW=+(localStorage.getItem('fc_dw')||4);}catch(e){}
+let sendMail=false,mailTo='';try{sendMail=localStorage.getItem('fc_mail')==='1';mailTo=localStorage.getItem('fc_mailto')||'';}catch(e){}
 let incFotos=true;try{incFotos=localStorage.getItem('fc_incFotos')!=='0';}catch(e){}
 
 function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove('show'),2600);}
@@ -455,6 +456,7 @@ function renderHome(app){
      <h2>Copia de seguridad</h2>
      <label class="chk"><input type="checkbox" id="incFotos" ${incFotos?'checked':''}> Incluir fotos</label>
      <p class="note" style="margin:-4px 2px 10px">Sin fotos la copia pesa muy poco. Al importar sin fotos se conservan las fotos que ya tengas en este dispositivo.</p>
+     ${mailChk()}
      <div class="grid2"><button class="btn" data-act="exportAll">Exportar copia</button><button class="btn" data-act="importAll">Importar copia</button></div>
      <p class="note" style="margin-top:14px">Cómo medir: láser en cruz sobre la encimera. Desde la línea vertical se mide a la pared izquierda y derecha, arriba y abajo. Desde la línea horizontal, en el lado izquierdo y en el derecho, se mide hasta el techo (o mueble alto) y hasta el mueble de abajo. Todas las medidas en mm.</p>`;
 }
@@ -473,6 +475,7 @@ function renderPromo(app){
    :`<div class="empty">Sin pisos todavía.</div>`)+
   `<button class="btn pri full" data-act="newPiso">+ Añadir piso</button>
    <h2>Exportar</h2>
+   ${mailChk()}
    <button class="btn pri full" data-act="dxfAllPisos">Exportar todos los DXF de los pisos</button>
    <p class="note" style="margin:4px 2px 10px">Un archivo DXF por cada piso, todos juntos en una descarga.</p>
    <button class="btn full" data-act="dxfPromo">DXF + fotos anotadas</button>
@@ -491,7 +494,7 @@ function renderPiso(app){
    :`<div class="empty">Añade una foto de cada frente de cocina.</div>`)+
   `<div class="grid2"><button class="btn pri" data-act="addCam">📷 Hacer foto</button><button class="btn" data-act="addGal">🖼 Galería</button></div>
    <button class="btn full" style="margin-top:8px" data-act="addNoPhoto">+ Frente sin foto</button>
-   <h2>Exportar</h2><button class="btn full" data-act="dxfPiso">Descargar DXF del piso</button>
+   <h2>Exportar</h2>${mailChk()}<button class="btn full" data-act="dxfPiso">Descargar DXF del piso</button>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPiso">Borrar piso</button>`;
   app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.photoURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
 }
@@ -532,6 +535,7 @@ function renderFrente(app){
      <div class="grid2" style="margin-top:8px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div>`
      :`<div class="note">Descuentos y enchufes de la promoción. Desmarca para poner valores distintos solo en este frente.</div>`}</div>
    <div class="card"><div style="font-weight:600;margin-bottom:6px">Pieza resultante</div><div class="note" id="cutnote" style="margin-bottom:8px"></div><div id="prev" class="prev"></div></div>
+   ${mailChk()}
    <button class="btn pri full" data-act="dxfFrente">Descargar DXF de este frente</button>
    <button class="btn full" style="margin-top:8px" data-act="copyDxf">Copiar DXF (texto)</button>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delFrente">Borrar frente</button>`;
@@ -723,6 +727,30 @@ async function annotatedJpg(f){
   return new Uint8Array(await b.arrayBuffer());
 }
 
+// ---------- Envío por correo ----------
+function mailChk(){return inClaude?'':`<label class="chk"><input type="checkbox" class="mailchk" ${sendMail?'checked':''}> Enviar también por correo</label>`;}
+document.addEventListener('change',e=>{if(e.target&&e.target.classList&&e.target.classList.contains('mailchk')){sendMail=e.target.checked;try{localStorage.setItem('fc_mail',sendMail?'1':'0');}catch(_){}document.querySelectorAll('.mailchk').forEach(c=>c.checked=sendMail);}});
+function afterExport(base,files){
+  if(!sendMail||inClaude||!files.length)return;
+  const enc=new TextEncoder(),u=files.map(f=>({name:f.name,data:typeof f.data==='string'?enc.encode(f.data):f.data}));
+  const file=u.length===1?new File([u[0].data],u[0].name,{type:'application/octet-stream'}):new File([makeZip(u)],base+'.zip',{type:'application/zip'});
+  const box=$('#mbox');
+  box.innerHTML=`<h3>Enviar por correo</h3><p class="note" style="font-size:15px">Archivo: <b>${esc(file.name)}</b></p>
+    <p class="note">Se abrirá el menú Compartir: elige Mail o Gmail y el archivo irá adjunto.</p>
+    <div class="fld"><label>Correo de destino (solo si no aparece el menú Compartir)</label><input class="in" type="email" id="mailto" value="${esc(mailTo)}" placeholder="correo@ejemplo.com"></div>
+    <div class="btns"><button class="btn" id="mCancel">Cancelar</button><button class="btn pri" id="mSend">Enviar</button></div>`;
+  $('#modal').hidden=false;
+  const close=()=>{$('#modal').hidden=true;box.innerHTML='';};
+  $('#mCancel').onclick=close;$('#modal').onclick=e=>{if(e.target.id==='modal')close();};
+  $('#mSend').onclick=()=>{
+    mailTo=$('#mailto').value.trim();try{localStorage.setItem('fc_mailto',mailTo);}catch(_){}
+    let can=false;try{can=!!(navigator.canShare&&navigator.canShare({files:[file]}));}catch(_){}
+    if(can){navigator.share({files:[file],title:base,text:'Adjunto: '+file.name}).catch(err=>{if(err&&err.name!=='AbortError')toast('No se pudo compartir');});close();return;}
+    close();
+    toast('Adjunta el archivo descargado: '+file.name);
+    setTimeout(()=>{location.href='mailto:'+encodeURIComponent(mailTo)+'?subject='+encodeURIComponent(base)+'&body='+encodeURIComponent('Adjunto el archivo '+file.name+'.');},300);
+  };
+}
 // ---------- Descargas ----------
 async function offer(base,files){
   if(Store.readyP)await Store.readyP;
@@ -774,32 +802,33 @@ const A={
     const one={...pi,frentes:[f]},nm=safe(pi.title)+' - '+safe(f.name||'Frente '+(pi.frentes.indexOf(f)+1));
     const files=[{name:nm+'.dxf',data:buildDXF(p,[one])}];
     if(f.photo){const j=await annotatedJpg(f);if(j)files.push({name:nm+'.jpg',data:j});}
-    offer(safe(p.title)+' - '+nm,inClaude?files:files.slice(0,1));},
+    await offer(safe(p.title)+' - '+nm,inClaude?files:files.slice(0,1));afterExport(safe(p.title)+' - '+nm,files.slice(0,1));},
   async copyDxf(){const p=P(),pi=PI(),f=F();if(!geom(f,p.cuts)){toast('Faltan medidas');return;}
     try{await navigator.clipboard.writeText(buildDXF(p,[{...pi,frentes:[f]}]));toast('DXF copiado. Pégalo en un archivo .dxf');}catch(e){toast('No se pudo copiar');}},
   async photoJpg(){const pi=PI(),f=F();const j=await annotatedJpg(f);if(!j)return;offer('foto',[{name:safe(pi.title)+' - '+safe(f.name||'Frente')+'.jpg',data:j}]);},
   async dxfPiso(){const p=P(),pi=PI();if(!pi.frentes.some(f=>geom(f,p.cuts))){toast('Ningún frente tiene las 8 medidas');return;}
     toast('Preparando…');const files=[{name:safe(pi.title)+'.dxf',data:buildDXF(p,[pi])},...(await photoFiles(pi,'fotos/'))];
-    offer(safe(p.title)+' - '+safe(pi.title),files);},
+    await offer(safe(p.title)+' - '+safe(pi.title),files);afterExport(safe(p.title)+' - '+safe(pi.title),files.filter(f=>/\.dxf$/i.test(f.name)));},
   async dxfAllPisos(){const p=P();
     const ok=p.pisos.filter(pi=>pi.frentes.some(f=>geom(f,p.cuts)));
     if(!ok.length){toast('Ningún frente tiene las 8 medidas');return;}
     const used={},files=ok.map(pi=>{let n=safe(pi.title);used[n]=(used[n]||0)+1;if(used[n]>1)n+=' ('+used[n]+')';return{name:n+'.dxf',data:buildDXF(p,[pi])};});
     const sin=p.pisos.length-ok.length;
-    await offer(safe(p.title)+' - DXF pisos',files.length===1&&!inClaude?files:files);
+    await offer(safe(p.title)+' - DXF pisos',files);afterExport(safe(p.title)+' - DXF pisos',files);
     if(sin)setTimeout(()=>toast(sin+' piso'+(sin>1?'s':'')+' sin medidas completas no incluido'+(sin>1?'s':'')),2800);},
   async dxfPromo(){const p=P();if(!p.pisos.some(pi=>pi.frentes.some(f=>geom(f,p.cuts)))){toast('Ningún frente tiene las 8 medidas');return;}
     toast('Preparando…');const files=[];
     for(const pi of p.pisos){if(pi.frentes.some(f=>geom(f,p.cuts)))files.push({name:safe(pi.title)+'.dxf',data:buildDXF(p,[pi])});files.push(...await photoFiles(pi,'fotos/'));}
     files.unshift({name:'_TODOS LOS PISOS.dxf',data:buildDXF(p,p.pisos)});
-    offer(safe(p.title),files);},
+    await offer(safe(p.title),files);afterExport(safe(p.title)+' - DXF',files.filter(f=>/\.dxf$/i.test(f.name)));},
   async exportAll(){
     toast('Preparando copia…');const photos={};
     if(incFotos)for(const p of S.promos)for(const pi of p.pisos)for(const f of pi.frentes){if(!f.photo)continue;
       try{const u=await Store.photoURL(f.photo);if(!u)continue;const b=await (await fetch(u)).blob();
         photos[JSON.stringify(f.photo)]=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(b);});}catch(e){}}
     const d=new Date(),ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    offer('copia',[{name:'frentes-copia-'+ds+(incFotos?'':'-sin-fotos')+'.json',data:JSON.stringify({app:'frentes-cocina',v:1,promos:S.promos,photos})}]);},
+    const cf=[{name:'frentes-copia-'+ds+(incFotos?'':'-sin-fotos')+'.json',data:JSON.stringify({app:'frentes-cocina',v:1,promos:S.promos,photos})}];
+    await offer('copia',cf);afterExport('Copia frentes '+ds,cf);},
   importAll(){$('#fImp').value='';$('#fImp').click();}
 };
 $('#app').addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const fn=A[b.dataset.act];if(fn)fn(b.dataset);});
