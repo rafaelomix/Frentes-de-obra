@@ -105,6 +105,10 @@ function geom(f,c){
 }
 const dist=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1]);
 const ENT={1:'sencillo',2:'doble',3:'triple',4:'cuádruple'};
+function cfgOf(p,f){
+  if(f&&f.cfg)return{cuts:f.cfg.cuts,dia:num(f.cfg.dia)||68,sep:num(f.cfg.sep)||70};
+  return{cuts:p.cuts,dia:num(p.dia)||68,sep:num(p.sep)||70};
+}
 function encGeom(e,p){
   const h=num(e.h),v=num(e.v);if(h==null||v==null)return null;
   const n=+e.n||1,sep=num(p.sep)||70;
@@ -127,92 +131,142 @@ function safe(s){return (String(s||'').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s
 function dxfEsc(s){return String(s).replace(/[^\x20-\x7e]/g,ch=>'\\U+'+ch.charCodeAt(0).toString(16).toUpperCase().padStart(4,'0'));}
 function D(v){return String(Math.round(v*1000)/1000);}
 
+// ---- Escritor DXF R2000 (AC1015) con cotas reales ----
+function DXFWriter(){
+  let hc=0x100;const nh=()=>(hc++).toString(16).toUpperCase();
+  const brMS=nh(),brPS=nh(),ents=[],blocks=[];
+  const E=(arr,owner,type,body)=>arr.push('0',type,'5',nh(),'330',owner,'100','AcDbEntity',...body);
+  const g={
+    line(arr,own,ly,a,b,byblock,lt){E(arr,own,'LINE',['8',ly,...(lt?['6',lt]:[]),...(byblock?['62','0']:[]),'100','AcDbLine','10',D(a[0]),'20',D(a[1]),'30','0','11',D(b[0]),'21',D(b[1]),'31','0']);},
+    text(arr,own,ly,p,h,s,rot,ha,va,byblock){E(arr,own,'TEXT',['8',ly,...(byblock?['62','0']:[]),'100','AcDbText','10',D(p[0]),'20',D(p[1]),'30','0','40',D(h),'1',dxfEsc(s),'50',D(rot||0),'72',String(ha||0),'11',D(p[0]),'21',D(p[1]),'31','0','100','AcDbText','73',String(va||0)]);},
+    lwpoly(arr,own,ly,pts){E(arr,own,'LWPOLYLINE',['8',ly,'100','AcDbPolyline','90',String(pts.length),'70','1','43','0',...pts.flatMap(q=>['10',D(q[0]),'20',D(q[1])])]);},
+    circle(arr,own,ly,p,r){E(arr,own,'CIRCLE',['8',ly,'100','AcDbCircle','10',D(p[0]),'20',D(p[1]),'30','0','40',D(r)]);}
+  };
+  const W={
+    line:(ly,a,b,lt)=>g.line(ents,brMS,ly,a,b,0,lt),
+    text:(ly,p,h,s,rot,ha,va)=>g.text(ents,brMS,ly,p,h,s,rot,ha,va),
+    lwpoly:(ly,pts)=>g.lwpoly(ents,brMS,ly,pts),
+    circle:(ly,p,r)=>g.circle(ents,brMS,ly,p,r),
+    // Cota alineada: p1,p2 = puntos medidos; d1,d2 = extremos de la línea de cota; tp = centro del texto
+    dim(ly,style,p1,p2,d1,d2,tp,h,tsz){
+      const br=nh(),name='*D'+(blocks.length+1),be=[],len=dist(p1,p2);
+      const ux=(p2[0]-p1[0])/len,uy=(p2[1]-p1[1])/len;
+      let ang=Math.atan2(uy,ux)*180/Math.PI;if(ang>90)ang-=180;if(ang<=-90)ang+=180;
+      const ext=(p,d)=>{const vx=d[0]-p[0],vy=d[1]-p[1],l=Math.hypot(vx,vy);if(l<20)return;const wx=vx/l,wy=vy/l;g.line(be,br,'0',[p[0]+wx*10,p[1]+wy*10],[d[0]+wx*20,d[1]+wy*20],1);};
+      ext(p1,d1);ext(p2,d2);
+      g.line(be,br,'0',d1,d2,1);
+      const nx=-uy,ny=ux,tx=(ux+nx)/Math.SQRT2*tsz,ty=(uy+ny)/Math.SQRT2*tsz;
+      g.line(be,br,'0',[d1[0]-tx,d1[1]-ty],[d1[0]+tx,d1[1]+ty],1);g.line(be,br,'0',[d2[0]-tx,d2[1]-ty],[d2[0]+tx,d2[1]+ty],1);
+      g.text(be,br,'0',tp,h,fmt(len),ang,1,2,1);
+      blocks.push({br,name,be});
+      E(ents,brMS,'DIMENSION',['8',ly,'100','AcDbDimension','2',name,'10',D(d2[0]),'20',D(d2[1]),'30','0','11',D(tp[0]),'21',D(tp[1]),'31','0','70','33','1','','71','5','42',D(len),'3',style,
+        '100','AcDbAlignedDimension','13',D(p1[0]),'23',D(p1[1]),'33','0','14',D(p2[0]),'24',D(p2[1]),'34','0']);
+    },
+    out(layers,dimstyles){
+      const T=[],tbl=(name,entries,extra)=>{const th=nh();T.push('0','TABLE','2',name,'5',th,'330','0','100','AcDbSymbolTable','70',String(entries.length),...(extra?extra(entries):[]));entries.forEach(e=>T.push(...e(th)));T.push('0','ENDTAB');};
+      const rec=(type,sub,h5,body)=>th=>['0',type,h5,nh(),'330',th,'100','AcDbSymbolTableRecord','100',sub,...body];
+      const lt=n=>rec('LTYPE','AcDbLinetypeTableRecord','5',['2',n,'70','0','3','','72','65','73','0','40','0.0']);
+      const stH=[];
+      tbl('VPORT',[]);
+      tbl('LTYPE',[lt('ByBlock'),lt('ByLayer'),lt('Continuous'),rec('LTYPE','AcDbLinetypeTableRecord','5',['2','DASHED','70','0','3','Discontinua __ __ __','72','65','73','2','40','30.0','49','20.0','74','0','49','-10.0','74','0'])]);
+      tbl('LAYER',layers.map(([n,c])=>rec('LAYER','AcDbLayerTableRecord','5',['2',n,'70','0','62',String(c),'6','Continuous','370','-3'])));
+      tbl('STYLE',[th=>{const h=nh();stH.push(h);return['0','STYLE','5',h,'330',th,'100','AcDbSymbolTableRecord','100','AcDbTextStyleTableRecord','2','Standard','70','0','40','0.0','41','1.0','50','0.0','71','0','42','2.5','3','txt','4',''];}]);
+      tbl('VIEW',[]);tbl('UCS',[]);
+      tbl('APPID',[rec('APPID','AcDbRegAppTableRecord','5',['2','ACAD','70','0'])]);
+      const dsH=[];
+      const dsEntries=dimstyles.map(([n,h,tsz])=>th=>{const hh=nh();dsH.push(hh);return['0','DIMSTYLE','105',hh,'330',th,'100','AcDbSymbolTableRecord','100','AcDbDimStyleTableRecord','2',n,'70','0',
+        '40','1.0','41',D(tsz),'42','10','43','0','44','20','140',D(h),'141','0','142',D(tsz),'147','6','73','0','74','0','77','1','78','8','271','1','278','44','176','256','177','256','178','256','340',stH[0]];});
+      // DIMSTYLE: hay que conocer los handles antes de la cabecera de la tabla
+      {const th=nh();const body=[];dsEntries.forEach(e=>body.push(...e(th)));T.push('0','TABLE','2','DIMSTYLE','5',th,'330','0','100','AcDbSymbolTable','70',String(dimstyles.length),'100','AcDbDimStyleTable','71',String(dsH.length),...dsH.flatMap(h=>['340',h]),...body,'0','ENDTAB');}
+      const brs=[[brMS,'*Model_Space'],[brPS,'*Paper_Space'],...blocks.map(b=>[b.br,b.name])];
+      {const th=nh();T.push('0','TABLE','2','BLOCK_RECORD','5',th,'330','0','100','AcDbSymbolTable','70',String(brs.length));
+       brs.forEach(([h,n])=>T.push('0','BLOCK_RECORD','5',h,'330',th,'100','AcDbSymbolTableRecord','100','AcDbBlockTableRecord','2',n));T.push('0','ENDTAB');}
+      const B=[];
+      const blk=(br,name,flags,ps,body)=>{B.push('0','BLOCK','5',nh(),'330',br,'100','AcDbEntity',...(ps?['67','1']:[]),'8','0','100','AcDbBlockBegin','2',name,'70',String(flags),'10','0','20','0','30','0','3',name,'1','',...body,
+        '0','ENDBLK','5',nh(),'330',br,'100','AcDbEntity',...(ps?['67','1']:[]),'8','0','100','AcDbBlockEnd');};
+      blk(brMS,'*Model_Space',0,false,[]);blk(brPS,'*Paper_Space',0,true,[]);
+      blocks.forEach(b=>blk(b.br,b.name,1,false,b.be));
+      const root=nh(),grp=nh();
+      const O=['0','DICTIONARY','5',root,'330','0','100','AcDbDictionary','281','1','3','ACAD_GROUP','350',grp,
+               '0','DICTIONARY','5',grp,'330',root,'100','AcDbDictionary','281','1'];
+      const Hd=['9','$ACADVER','1','AC1015','9','$DWGCODEPAGE','3','ANSI_1252','9','$INSUNITS','70','4','9','$MEASUREMENT','70','1','9','$EXTNAMES','290','1','9','$HANDSEED','5',(hc+16).toString(16).toUpperCase()];
+      const all=['0','SECTION','2','HEADER',...Hd,'0','ENDSEC','0','SECTION','2','CLASSES','0','ENDSEC',
+        '0','SECTION','2','TABLES',...T,'0','ENDSEC','0','SECTION','2','BLOCKS',...B,'0','ENDSEC',
+        '0','SECTION','2','ENTITIES',...ents,'0','ENDSEC','0','SECTION','2','OBJECTS',...O,'0','ENDSEC','0','EOF'];
+      return all.join('\r\n')+'\r\n';
+    }
+  };
+  return W;
+}
+
+const LY={ext:'EXTERIOR',obra:'0 OBRACOTAS',gen:'EX_COTAS',enc:'1_INTERIOR',txt:'EX_COTAS',med:'0 OBRA'};
 function buildDXF(promo,pisos){
-  const E=[],c=promo.cuts,H=35,HO=25;
-  const LY_OBRA='0_obracotas',LY_GEN='Ex_cotas';
-  const L=(ly,a,b)=>E.push('0','LINE','8',ly,'10',D(a[0]),'20',D(a[1]),'30','0','11',D(b[0]),'21',D(b[1]),'31','0');
-  const T=(ly,p,h,s,rot,al)=>E.push('0','TEXT','8',ly,'10',D(p[0]),'20',D(p[1]),'30','0','40',D(h),'1',dxfEsc(s),'50',D(rot||0),'72',String(al||0),'11',D(p[0]),'21',D(p[1]),'31','0');
-  const CI=(ly,p,r)=>E.push('0','CIRCLE','8',ly,'10',D(p[0]),'20',D(p[1]),'30','0','40',D(r));
-  const PL=(ly,pts)=>{E.push('0','POLYLINE','8',ly,'66','1','10','0','20','0','30','0','70','1');for(const p of pts)E.push('0','VERTEX','8',ly,'10',D(p[0]),'20',D(p[1]),'30','0');E.push('0','SEQEND','8',ly);};
-  const txtAng=(ux,uy)=>{let ang=Math.atan2(uy,ux)*180/Math.PI;if(ang>90)ang-=180;if(ang<=-90)ang+=180;return ang;};
+  const W=DXFWriter(),c=promo.cuts,H=35,HO=25;
   // Cota sobre la propia línea a-b (cotas de obra y de enchufes)
   const dimLine=(ly,a,b,h)=>{
-    const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);if(len<1)return;
-    const ux=dx/len,uy=dy/len,nx=-uy,ny=ux;
-    L(ly,a,b);
-    const tx=(ux+nx)/Math.SQRT2*10,ty=(uy+ny)/Math.SQRT2*10;
-    L(ly,[a[0]-tx,a[1]-ty],[a[0]+tx,a[1]+ty]);L(ly,[b[0]-tx,b[1]-ty],[b[0]+tx,b[1]+ty]);
-    const ang=txtAng(ux,uy),r=ang*Math.PI/180,upx=-Math.sin(r),upy=Math.cos(r);
-    T(ly,[(a[0]+b[0])/2+upx*8,(a[1]+b[1])/2+upy*8],h,fmt(len),ang,1);
+    const len=dist(a,b);if(len<1)return;
+    const ux=(b[0]-a[0])/len,uy=(b[1]-a[1])/len;
+    let ang=Math.atan2(uy,ux)*180/Math.PI;if(ang>90)ang-=180;if(ang<=-90)ang+=180;
+    const r=ang*Math.PI/180,upx=-Math.sin(r),upy=Math.cos(r);
+    const tp=[(a[0]+b[0])/2+upx*(8+h/2),(a[1]+b[1])/2+upy*(8+h/2)];
+    W.dim(ly,h===H?'FRENTE_EX':'FRENTE_OBRA',a,b,a,b,tp,h,10);
   };
   // Cota exterior paralela al lado a-b (cotas generales de la pieza)
   const cota=(ly,a,b,cen)=>{
-    const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);if(len<1)return;
-    const ux=dx/len,uy=dy/len;let nx=-uy,ny=ux;const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+    const len=dist(a,b);if(len<1)return;
+    const ux=(b[0]-a[0])/len,uy=(b[1]-a[1])/len;let nx=-uy,ny=ux;const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
     if((mx-cen[0])*nx+(my-cen[1])*ny<0){nx=-nx;ny=-ny;}
     const off=90,a2=[a[0]+nx*off,a[1]+ny*off],b2=[b[0]+nx*off,b[1]+ny*off];
-    L(ly,[a[0]+nx*15,a[1]+ny*15],[a2[0]+nx*20,a2[1]+ny*20]);
-    L(ly,[b[0]+nx*15,b[1]+ny*15],[b2[0]+nx*20,b2[1]+ny*20]);
-    L(ly,a2,b2);
-    const tx=(ux+nx)/Math.SQRT2*12,ty=(uy+ny)/Math.SQRT2*12;
-    L(ly,[a2[0]-tx,a2[1]-ty],[a2[0]+tx,a2[1]+ty]);L(ly,[b2[0]-tx,b2[1]-ty],[b2[0]+tx,b2[1]+ty]);
-    const ang=txtAng(ux,uy),r=ang*Math.PI/180,upx=-Math.sin(r),upy=Math.cos(r);
-    const k=(nx*upx+ny*upy)<0?(12+H):12;
-    T(ly,[(a2[0]+b2[0])/2+nx*k,(a2[1]+b2[1])/2+ny*k],H,fmt(len),ang,1);
+    const tp=[(a2[0]+b2[0])/2+nx*(12+H/2),(a2[1]+b2[1])/2+ny*(12+H/2)];
+    W.dim(ly,'FRENTE_EX',a,b,a2,b2,tp,H,12);
   };
   let cy=0;
   for(const piso of pisos){
     const rowTop=cy-200;let x=0,rowH=0,any=false;
-    T('TEXTO',[0,cy],70,piso.title||'',0,0);
+    W.text(LY.txt,[0,cy],70,String(piso.title||'').toUpperCase(),0,0,0);
     piso.frentes.forEach(f=>{
-      const g=geom(f,c);if(!g)return;any=true;
-      const encs=(f.enchufes||[]).map(e=>({e,g:encGeom(e,promo)})).filter(q=>q.g);
-      const R=(num(promo.dia)||68)/2;
+      const cf=cfgOf(promo,f),g=geom(f,cf.cuts);if(!g)return;any=true;
+      const encs=(f.enchufes||[]).map(e=>({e,g:encGeom(e,cf)})).filter(q=>q.g);
+      const R=cf.dia/2;
       const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(q=>q.g.pts.flatMap(t=>[[t[0]-R,t[1]-R],[t[0]+R,t[1]+R]]))]);
       const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200;
       const S=p=>[p[0]+dx,p[1]+dy];
       const meas=g.meas.map(S),fin=g.fin.map(S),o=S([0,0]),m=g.m;
-      PL('MEDIDAS',meas);
-      L(LY_OBRA,[bb.minX+dx-40,o[1]],[bb.maxX+dx+40,o[1]]);L(LY_OBRA,[o[0],bb.minY+dy-40],[o[0],bb.maxY+dy+40]);
-      PL('Exterior',fin);
+      W.lwpoly(LY.med,meas);
+      W.line(LY.obra,[bb.minX+dx-40,o[1]],[bb.maxX+dx+40,o[1]],'DASHED');W.line(LY.obra,[o[0],bb.minY+dy-40],[o[0],bb.maxY+dy+40],'DASHED');
+      W.lwpoly(LY.ext,fin);
       // Cotas de obra: desde las líneas del láser
-      dimLine(LY_OBRA,S([0,m.ul-60]),S([-m.lt,m.ul-60]),HO);
-      dimLine(LY_OBRA,S([0,-m.dl+60]),S([-m.lb,-m.dl+60]),HO);
-      dimLine(LY_OBRA,S([0,m.ur-60]),S([m.rt,m.ur-60]),HO);
-      dimLine(LY_OBRA,S([0,-m.dr+60]),S([m.rb,-m.dr+60]),HO);
-      dimLine(LY_OBRA,S([-m.lt+60,0]),S([-m.lt+60,m.ul]),HO);
-      dimLine(LY_OBRA,S([-m.lb+60,0]),S([-m.lb+60,-m.dl]),HO);
-      dimLine(LY_OBRA,S([m.rt-60,0]),S([m.rt-60,m.ur]),HO);
-      dimLine(LY_OBRA,S([m.rb-60,0]),S([m.rb-60,-m.dr]),HO);
+      dimLine(LY.obra,S([0,m.ul-60]),S([-m.lt,m.ul-60]),HO);
+      dimLine(LY.obra,S([0,-m.dl+60]),S([-m.lb,-m.dl+60]),HO);
+      dimLine(LY.obra,S([0,m.ur-60]),S([m.rt,m.ur-60]),HO);
+      dimLine(LY.obra,S([0,-m.dr+60]),S([m.rb,-m.dr+60]),HO);
+      dimLine(LY.obra,S([-m.lt+60,0]),S([-m.lt+60,m.ul]),HO);
+      dimLine(LY.obra,S([-m.lb+60,0]),S([-m.lb+60,-m.dl]),HO);
+      dimLine(LY.obra,S([m.rt-60,0]),S([m.rt-60,m.ur]),HO);
+      dimLine(LY.obra,S([m.rb-60,0]),S([m.rb-60,-m.dr]),HO);
       // Cotas generales de la pieza
       const cen=[(fin[0][0]+fin[2][0])/2,(fin[0][1]+fin[2][1])/2];
-      cota(LY_GEN,fin[0],fin[1],cen);cota(LY_GEN,fin[3],fin[2],cen);
-      cota(LY_GEN,fin[0],fin[3],cen);cota(LY_GEN,fin[1],fin[2],cen);
+      cota(LY.gen,fin[0],fin[1],cen);cota(LY.gen,fin[3],fin[2],cen);
+      cota(LY.gen,fin[0],fin[3],cen);cota(LY.gen,fin[1],fin[2],cen);
       // Enchufes
       encs.forEach(q=>{
-        q.g.pts.forEach(t=>CI('0_interior',S(t),R));
+        q.g.pts.forEach(t=>W.circle(LY.enc,S(t),R));
         const ec=q.g.c,gb=bbox(q.g.pts);
-        dimLine(LY_OBRA,S([0,ec[1]]),S(ec),HO);
-        dimLine(LY_OBRA,S([ec[0],0]),S(ec),HO);
+        dimLine(LY.obra,S([0,ec[1]]),S(ec),HO);
+        dimLine(LY.obra,S([ec[0],0]),S(ec),HO);
         const[TL,TR,BR,BL]=g.fin;
         const xl=BL[0]+(ec[1]-BL[1])*(TL[0]-BL[0])/((TL[1]-BL[1])||1);
         const yb=BL[1]+(ec[0]-BL[0])*(BR[1]-BL[1])/((BR[0]-BL[0])||1);
         const yh=gb.minY-R-30,xv=gb.maxX+R+30;
-        dimLine(LY_GEN,S([xl,yh]),S([ec[0],yh]),HO);
-        dimLine(LY_GEN,S([xv,yb]),S([xv,ec[1]]),HO);
+        dimLine(LY.gen,S([xl,yh]),S([ec[0],yh]),HO);
+        dimLine(LY.gen,S([xv,yb]),S([xv,ec[1]]),HO);
       });
       x+=bb.w+400+700;
       rowH=Math.max(rowH,bb.h+400);
     });
     cy=rowTop-(any?rowH:0)-400;
   }
-  const layers=[['0',7],['Exterior',7],['0_interior',4],[LY_OBRA,6],[LY_GEN,3],['TEXTO',2],['MEDIDAS',8]];
-  const s=['0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','0','ENDSEC',
-   '0','SECTION','2','TABLES','0','TABLE','2','LTYPE','70','1','0','LTYPE','2','CONTINUOUS','70','0','3','Solid line','72','65','73','0','40','0.0','0','ENDTAB',
-   '0','TABLE','2','LAYER','70',String(layers.length)];
-  for(const[n,col]of layers)s.push('0','LAYER','2',n,'70','0','62',String(col),'6','CONTINUOUS');
-  s.push('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES',...E,'0','ENDSEC','0','EOF');
-  return s.join('\r\n')+'\r\n';
+  return W.out([['0',7],[LY.ext,7],[LY.obra,2],[LY.gen,1],[LY.enc,161],[LY.med,4]],[['Standard',2.5,0],['FRENTE_OBRA',HO,10],['FRENTE_EX',H,12]]);
 }
 
 const CRCT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
@@ -433,7 +487,7 @@ function renderPiso(app){
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Renombrar</button></div></div>
   <h2>Frentes</h2>`+
   (pi.frentes.length?pi.frentes.map((f,i)=>{const n=filled(f);
-    return `<button class="item" data-act="openFrente" data-id="${f.id}">${f.photo?`<img class="thumb" data-ph="${esc(JSON.stringify(f.photo))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}</div></div><span class="chev">›</span></button>`;}).join('')
+    return `<button class="item" data-act="openFrente" data-id="${f.id}">${f.photo?`<img class="thumb" data-ph="${esc(JSON.stringify(f.photo))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}${f.cfg?' · <span style="color:var(--mut)">config. propia</span>':''}</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Añade una foto de cada frente de cocina.</div>`)+
   `<div class="grid2"><button class="btn pri" data-act="addCam">📷 Hacer foto</button><button class="btn" data-act="addGal">🖼 Galería</button></div>
    <button class="btn full" style="margin-top:8px" data-act="addNoPhoto">+ Frente sin foto</button>
@@ -468,10 +522,16 @@ function renderFrente(app){
   `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Lo que escribas a la izquierda se copia a la derecha; luego corrige la derecha si es distinta.</div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div>
    <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes</div>
-    <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(num(p.dia)||68)}, separación ${fmt(num(p.sep)||70)} mm.</div>
+    <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm.</div>
     ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
     <button class="btn full" data-act="addEnc">+ Añadir enchufe</button></div>
-   <div class="card"><div style="font-weight:600;margin-bottom:6px">Pieza resultante</div><div class="note" style="margin-bottom:8px">Descuentos: arriba ${fmt(p.cuts.t)}, abajo ${fmt(p.cuts.b)}, izq ${fmt(p.cuts.l)}, dcha ${fmt(p.cuts.r)} mm</div><div id="prev" class="prev"></div></div>
+   <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de medidas</div>
+    <label class="chk"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Igual que la promoción</label>
+    ${f.cfg?`<div class="note" style="margin:-2px 2px 8px">Valores propios de este frente (mm):</div>
+     <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt(f.cfg.cuts[k]))}"></label>`).join('')}</div>
+     <div class="grid2" style="margin-top:8px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div>`
+     :`<div class="note">Descuentos y enchufes de la promoción. Desmarca para poner valores distintos solo en este frente.</div>`}</div>
+   <div class="card"><div style="font-weight:600;margin-bottom:6px">Pieza resultante</div><div class="note" id="cutnote" style="margin-bottom:8px"></div><div id="prev" class="prev"></div></div>
    <button class="btn pri full" data-act="dxfFrente">Descargar DXF de este frente</button>
    <button class="btn full" style="margin-top:8px" data-act="copyDxf">Copiar DXF (texto)</button>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delFrente">Borrar frente</button>`;
@@ -480,14 +540,22 @@ function renderFrente(app){
     if(MIRROR[k])setMeasureInput(MIRROR[k],v);
     Store.save(p);drawCanvas();renderPrev();
   });
+  const cs=$('#cfgSame');if(cs)cs.onchange=()=>{
+    if(cs.checked)delete f.cfg;
+    else{const c0=cfgOf(p,null);f.cfg={cuts:{...c0.cuts},dia:c0.dia,sep:c0.sep};}
+    Store.save(p);render();
+  };
+  app.querySelectorAll('[data-fcut]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&f.cfg){f.cfg.cuts[i.dataset.fcut]=v;Store.save(p);renderPrev();}});
+  app.querySelectorAll('[data-fset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0&&f.cfg){f.cfg[i.dataset.fset]=v;Store.save(p);renderPrev();}});
   renderPrev();
   if(f.photo)setupCanvas();
 }
 
 function renderPrev(){
-  const el=$('#prev');if(!el)return;const p=P(),f=F(),g=geom(f,p.cuts);
+  const el=$('#prev');if(!el)return;const p=P(),f=F(),cf=cfgOf(p,f),g=geom(f,cf.cuts);
+  const cn=$('#cutnote');if(cn)cn.textContent=`Descuentos: arriba ${fmt(cf.cuts.t)}, abajo ${fmt(cf.cuts.b)}, izq ${fmt(cf.cuts.l)}, dcha ${fmt(cf.cuts.r)} mm`+(f.cfg?' (propios de este frente)':'');
   if(!g){el.innerHTML=`<div class="empty">Faltan ${8-filled(f)} medida${8-filled(f)==1?'':'s'} para dibujar la pieza.</div>`;return;}
-  const R=(num(p.dia)||68)/2,encs=(f.enchufes||[]).map((e,i)=>({i,e,g:encGeom(e,p)})).filter(x=>x.g);
+  const R=cf.dia/2,encs=(f.enchufes||[]).map((e,i)=>({i,e,g:encGeom(e,cf)})).filter(x=>x.g);
   const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(x=>x.g.pts)]),sz=Math.max(bb.w,bb.h),pad=sz*0.12,fs=sz/18;
   const out=encs.filter(x=>x.g.pts.some(q=>!inPoly(q,g.fin)));
   const pt=a=>a.map(q=>`${q[0]},${-q[1]}`).join(' ');
