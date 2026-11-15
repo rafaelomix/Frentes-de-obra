@@ -304,7 +304,7 @@ let S={promos:[]};
 let route={v:'home'};
 let mode='med'; // med | laser | nota
 let drawColor='#ef4444',drawW=4;try{drawColor=localStorage.getItem('fc_dc')||drawColor;drawW=+(localStorage.getItem('fc_dw')||4);}catch(e){}
-let sendMail=false,mailTo='';try{sendMail=localStorage.getItem('fc_mail')==='1';mailTo=localStorage.getItem('fc_mailto')||'';}catch(e){}
+let sendMail=true,mailTo='';try{sendMail=localStorage.getItem('fc_mail')!=='0';mailTo=localStorage.getItem('fc_mailto')||'';}catch(e){}
 let incFotos=true;try{incFotos=localStorage.getItem('fc_incFotos')!=='0';}catch(e){}
 
 function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove('show'),2600);}
