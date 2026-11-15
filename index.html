@@ -86,6 +86,7 @@ table.dims td:last-child{text-align:right;font-weight:700;font-variant-numeric:t
 <script>
 // ===== PURE-START (geometría, DXF, ZIP) =====
 const KEYS=['ul','lt','lb','dl','ur','rt','rb','dr'];
+const MIRROR={lt:'rt',lb:'rb',ul:'ur',dl:'dr'};
 const KLAB={lt:'Izq · rayo → pared (arriba)',lb:'Izq · rayo → pared (abajo)',ul:'Izq · rayo → techo',dl:'Izq · rayo → mueble',
  rt:'Dcha · rayo → pared (arriba)',rb:'Dcha · rayo → pared (abajo)',ur:'Dcha · rayo → techo',dr:'Dcha · rayo → mueble'};
 const KSHORT={ul:'↑ Techo',lt:'← Pared arriba',lb:'← Pared abajo',dl:'↓ Mueble',ur:'↑ Techo',rt:'Pared arriba →',rb:'Pared abajo →',dr:'↓ Mueble'};
@@ -101,7 +102,7 @@ const dist=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1]);
 const ENT={1:'sencillo',2:'doble',3:'triple',4:'cuádruple'};
 function encGeom(e,p){
   const h=num(e.h),v=num(e.v);if(h==null||v==null)return null;
-  const n=+e.n||1,sep=num(p.sep)||71;
+  const n=+e.n||1,sep=num(p.sep)||70;
   const cx=e.lado==='izq'?-h:h,cy=e.vpos==='abajo'?-v:v,pts=[];
   for(let i=0;i<n;i++){const o=(i-(n-1)/2)*sep;pts.push(e.ori==='v'?[cx,cy+o]:[cx+o,cy]);}
   return{c:[cx,cy],pts};
@@ -161,7 +162,7 @@ function buildDXF(promo,pisos){
     piso.frentes.forEach(f=>{
       const g=geom(f,c);if(!g)return;any=true;
       const encs=(f.enchufes||[]).map(e=>({e,g:encGeom(e,promo)})).filter(q=>q.g);
-      const R=(num(promo.dia)||70)/2;
+      const R=(num(promo.dia)||68)/2;
       const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(q=>q.g.pts.flatMap(t=>[[t[0]-R,t[1]-R],[t[0]+R,t[1]+R]]))]);
       const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200;
       const S=p=>[p[0]+dx,p[1]+dy];
@@ -406,7 +407,7 @@ function renderPromo(app){
   <div class="card"><div style="font-weight:600;margin-bottom:8px">Descuentos sobre la medida (mm)</div>
    <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-cut="${k}" value="${esc(fmt(p.cuts[k]))}"></label>`).join('')}</div>
    <div style="font-weight:600;margin:12px 0 8px">Enchufes (mm)</div>
-   <div class="grid2"><label class="note">Ø agujero<input class="in" inputmode="decimal" data-pset="dia" value="${esc(fmt(num(p.dia)||70))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-pset="sep" value="${esc(fmt(num(p.sep)||71))}"></label></div></div>
+   <div class="grid2"><label class="note">Ø agujero<input class="in" inputmode="decimal" data-pset="dia" value="${esc(fmt(num(p.dia)||68))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-pset="sep" value="${esc(fmt(num(p.sep)||70))}"></label></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     return `<button class="item" data-act="openPiso" data-id="${pi.id}"><div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
@@ -459,10 +460,10 @@ function renderFrente(app){
    <div class="cvwrap"><canvas id="cv"></canvas></div>
    <div class="grid2" style="margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
-  `<div class="card"><div style="font-weight:600;margin-bottom:10px">Medidas desde el láser (mm)</div>
+  `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Lo que escribas a la izquierda se copia a la derecha; luego corrige la derecha si es distinta.</div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div>
    <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes</div>
-    <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(num(p.dia)||70)}, separación ${fmt(num(p.sep)||71)} mm.</div>
+    <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(num(p.dia)||68)}, separación ${fmt(num(p.sep)||70)} mm.</div>
     ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
     <button class="btn full" data-act="addEnc">+ Añadir enchufe</button></div>
    <div class="card"><div style="font-weight:600;margin-bottom:6px">Pieza resultante</div><div class="note" style="margin-bottom:8px">Descuentos: arriba ${fmt(p.cuts.t)}, abajo ${fmt(p.cuts.b)}, izq ${fmt(p.cuts.l)}, dcha ${fmt(p.cuts.r)} mm</div><div id="prev" class="prev"></div></div>
@@ -470,7 +471,8 @@ function renderFrente(app){
    <button class="btn full" style="margin-top:8px" data-act="copyDxf">Copiar DXF (texto)</button>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delFrente">Borrar frente</button>`;
   app.querySelectorAll('input[data-k]').forEach(i=>i.oninput=()=>{
-    const v=i.value.trim();f.m[i.dataset.k]=v===''?null:v;i.classList.toggle('miss',num(v)==null);
+    const v=i.value.trim(),k=i.dataset.k;f.m[k]=v===''?null:v;i.classList.toggle('miss',num(v)==null);
+    if(MIRROR[k])setMeasureInput(MIRROR[k],v);
     Store.save(p);drawCanvas();renderPrev();
   });
   renderPrev();
@@ -480,7 +482,7 @@ function renderFrente(app){
 function renderPrev(){
   const el=$('#prev');if(!el)return;const p=P(),f=F(),g=geom(f,p.cuts);
   if(!g){el.innerHTML=`<div class="empty">Faltan ${8-filled(f)} medida${8-filled(f)==1?'':'s'} para dibujar la pieza.</div>`;return;}
-  const R=(num(p.dia)||70)/2,encs=(f.enchufes||[]).map((e,i)=>({i,e,g:encGeom(e,p)})).filter(x=>x.g);
+  const R=(num(p.dia)||68)/2,encs=(f.enchufes||[]).map((e,i)=>({i,e,g:encGeom(e,p)})).filter(x=>x.g);
   const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(x=>x.g.pts)]),sz=Math.max(bb.w,bb.h),pad=sz*0.12,fs=sz/18;
   const out=encs.filter(x=>x.g.pts.some(q=>!inPoly(q,g.fin)));
   const pt=a=>a.map(q=>`${q[0]},${-q[1]}`).join(' ');
@@ -604,9 +606,13 @@ async function editMeasure(k){
   const r=await modal({title:KLAB[k],fields:[{label:'Medida en mm',value:f.m[k]==null?'':f.m[k],num:true,ph:'mm'}],
     buttons:[{label:'Cancelar',v:null},{label:'Guardar',v:'ok'},{label:'Siguiente →',v:'next',pri:true}]});
   if(!r.v)return;const v=r.values[0].trim();f.m[k]=v===''?null:v;Store.save(p);
-  const ip=document.querySelector(`input[data-k="${k}"]`);if(ip){ip.value=v;ip.classList.toggle('miss',num(v)==null);}
+  setMeasureInput(k,v);if(MIRROR[k])setMeasureInput(MIRROR[k],v);
   drawCanvas();renderPrev();
   if(r.v==='next'){const i=KEYS.indexOf(k);const nx=KEYS.slice(i+1).concat(KEYS.slice(0,i)).find(q=>num(f.m[q])==null);if(nx)editMeasure(nx);else toast('Todas las medidas puestas');}
+}
+function setMeasureInput(k,v){
+  const f=F();f.m[k]=v===''?null:v;
+  const ip=document.querySelector(`input[data-k="${k}"]`);if(ip){ip.value=v;ip.classList.toggle('miss',num(v)==null);}
 }
 async function encForm(i){
   const p=P(),f=F();f.enchufes=f.enchufes||[];
@@ -669,7 +675,7 @@ async function photoFiles(pi,prefix){
 // ---------- Acciones ----------
 const A={
   async newPromo(){const t=await askText('Nueva promoción','Título de la promoción','','p. ej. Residencial Los Olmos');if(!t)return;
-    const p={id:'p_'+uid(),title:t,cuts:{t:2,b:12,l:2,r:2},pisos:[],updated:Date.now()};S.promos.push(p);Store.save(p);go({v:'promo',p:p.id});},
+    const p={id:'p_'+uid(),title:t,cuts:{t:2,b:12,l:2,r:2},dia:68,sep:70,pisos:[],updated:Date.now()};S.promos.push(p);Store.save(p);go({v:'promo',p:p.id});},
   openPromo(d){go({v:'promo',p:d.id});},
   async renPromo(){const p=P(),t=await askText('Renombrar promoción','Título',p.title);if(t){p.title=t;Store.save(p);render();}},
   async delPromo(){const p=P();if(!await confirmDel('la promoción "'+p.title+'"'))return;S.promos=S.promos.filter(x=>x!==p);await Store.remove(p.id);go({v:'home'});},
