@@ -315,12 +315,20 @@ function idbReq(db,st,mode,fn){return new Promise((res,rej)=>{const tx=db.transa
 
 // ---------- Almacenamiento ----------
 const memPhotos=new Map();
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
 const Store={
   mode:'mem',idb:null,db:null,uid:null,assets:null,dl:null,urls:new Map(),timers:{},chains:{},readyP:null,
+  locked:false,gs:null,syncing:false,syncAgain:false,lastSync:0,syncErr:'',
   async init(){
     try{this.idb=await idbOpen();this.mode='local';}catch(e){this.idb=null;}
+    if(!inClaude){
+      this.gs=LS.get('fc_gs',null);
+      if(!this.gs||!this.gs.url||!this.gs.key){this.locked=true;this.readyP=Promise.resolve();render();return;}
+      this.mode='gs';
+    }
     let local=[];try{if(this.idb)local=await idbReq(this.idb,'promos','readonly',s=>s.getAll())||[];}catch(e){}
     S.promos=local;render();
+    if(this.mode==='gs'){this.readyP=Promise.resolve();this.startSync();return;}
     this.readyP=this.connect();await this.readyP;
   },
   async connect(){
@@ -343,42 +351,163 @@ const Store={
     setSync();render();
   },
   col(){return this.db.collection('data/users/'+this.uid);},
-  save(p){p.updated=Date.now();clearTimeout(this.timers[p.id]);setSync('saving');this.timers[p.id]=setTimeout(()=>this.flush(p.id),700);},
+  save(p){p.updated=Date.now();clearTimeout(this.timers[p.id]);setSync('saving');
+    if(this.mode==='gs'){const pe=new Set(LS.get('fc_pend',[]));pe.add(p.id);LS.set('fc_pend',[...pe]);}
+    this.timers[p.id]=setTimeout(()=>this.flush(p.id),700);},
   flush(id){
     this.chains[id]=(this.chains[id]||Promise.resolve()).then(async()=>{
       const p=S.promos.find(x=>x.id===id);if(!p)return;const data=clone(p);
       if(this.mode==='cloud')await this.col().doc(id).set(data);
       if(this.idb)await idbReq(this.idb,'promos','readwrite',s=>s.put(data));
-    }).then(()=>setSync()).catch(e=>{console.error(e);setSync('err');});
+    }).then(()=>{if(this.mode==='gs')this.sync(false);else setSync();}).catch(e=>{console.error(e);setSync('err');});
   },
   async remove(id){
     clearTimeout(this.timers[id]);
     try{if(this.mode==='cloud')await this.col().doc(id).delete();}catch(e){console.warn(e);}
     try{if(this.idb)await idbReq(this.idb,'promos','readwrite',s=>s.delete(id));}catch(e){}
+    if(this.mode==='gs'){const d=new Set(LS.get('fc_del',[]));d.add(id);LS.set('fc_del',[...d]);
+      LS.set('fc_pend',LS.get('fc_pend',[]).filter(x=>x!==id));this.sync(false);}
   },
   async savePhoto(blob){
     if(this.readyP)await this.readyP;
+    if(this.mode==='gs'){
+      const id='ph_'+uid();
+      try{await idbReq(this.idb,'photos','readwrite',s=>s.put(blob,id));}catch(e){memPhotos.set(id,blob);}
+      const q=LS.get('fc_phq',[]);q.push(id);LS.set('fc_phq',q);
+      return{g:id};
+    }
     if(this.assets){try{const r=await this.assets.upload(blob,{type:'image/jpeg'});return{a:r.id};}catch(e){console.warn('upload',e);}}
     const id='ph_'+uid();
     if(this.idb){try{await idbReq(this.idb,'photos','readwrite',s=>s.put(blob,id));return{l:id};}catch(e){}}
     memPhotos.set(id,blob);return{l:id};
   },
+  async localBlob(id){let b=memPhotos.get(id);if(!b&&this.idb){try{b=await idbReq(this.idb,'photos','readonly',s=>s.get(id));}catch(e){}}return b||null;},
   async photoURL(ref){
-    if(!ref)return null;const k=ref.a?'a:'+ref.a:'l:'+ref.l;
+    if(!ref)return null;const k=ref.a?'a:'+ref.a:ref.g?'g:'+ref.g:'l:'+ref.l;
     if(this.urls.has(k))return this.urls.get(k);
     let url=null;
     if(ref.a)url='/_blob/'+ref.a;
-    else{let b=memPhotos.get(ref.l);if(!b&&this.idb){try{b=await idbReq(this.idb,'photos','readonly',s=>s.get(ref.l));}catch(e){}}if(b)url=URL.createObjectURL(b);}
+    else{
+      const id=ref.g||ref.l;let b=await this.localBlob(id);
+      if(!b&&ref.g&&this.mode==='gs'){
+        try{const r=await gsApi('photoGet',{name:ref.g});const bin=atob(r.b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+          b=new Blob([u],{type:r.mime||'image/jpeg'});try{await idbReq(this.idb,'photos','readwrite',s=>s.put(b,id));}catch(e){}}catch(e){}
+      }
+      if(b)url=URL.createObjectURL(b);
+    }
     if(url)this.urls.set(k,url);return url;
+  },
+  // ---- Sincronización con Google Sheets / Drive ----
+  startSync(){
+    this.sync(true);
+    setInterval(()=>this.sync(true),120000);
+    window.addEventListener('online',()=>this.sync(true));
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')this.sync(true);});
+  },
+  async sync(full){
+    if(this.mode!=='gs')return;
+    if(this.syncing){this.syncAgain=this.syncAgain||full||'push';return;}
+    if(navigator.onLine===false){setSync();return;}
+    this.syncing=true;setSync('sync');
+    try{
+      // fotos antiguas guardadas solo en este dispositivo -> pasan a Drive
+      for(const p of S.promos){let ch=false;for(const pi of p.pisos)for(const f of pi.frentes)if(f.photo&&f.photo.l){const q=LS.get('fc_phq',[]);q.push(f.photo.l);LS.set('fc_phq',q);f.photo={g:f.photo.l};ch=true;}
+        if(ch){const pe=new Set(LS.get('fc_pend',[]));pe.add(p.id);LS.set('fc_pend',[...pe]);if(this.idb)await idbReq(this.idb,'promos','readwrite',s=>s.put(clone(p)));}}
+      for(const id of [...new Set(LS.get('fc_phq',[]))]){
+        const b=await this.localBlob(id);
+        if(b){const buf=new Uint8Array(await b.arrayBuffer());let bin='';for(let i=0;i<buf.length;i+=0x8000)bin+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));
+          await gsApi('photoUp',{name:id,b64:btoa(bin)});}
+        LS.set('fc_phq',LS.get('fc_phq',[]).filter(x=>x!==id));
+      }
+      for(const id of LS.get('fc_del',[])){await gsApi('delete',{id});LS.set('fc_del',LS.get('fc_del',[]).filter(x=>x!==id));const k=new Set(LS.get('fc_known',[]));k.delete(id);LS.set('fc_known',[...k]);}
+      if(full){
+        const r=await gsApi('list');const srv=r.promos||[],pend=new Set(LS.get('fc_pend',[])),known=new Set(LS.get('fc_known',[])),dels=new Set(LS.get('fc_del',[]));
+        const merged=[];let changed=false;
+        for(const sp of srv){if(dels.has(sp.id))continue;const lp=S.promos.find(x=>x.id===sp.id);
+          if(lp&&pend.has(lp.id)&&(lp.updated||0)>=(sp.updated||0))merged.push(lp);
+          else{merged.push(sp);if(!lp||JSON.stringify(lp)!==JSON.stringify(sp))changed=true;}}
+        for(const lp of S.promos){if(srv.find(x=>x.id===lp.id))continue;
+          if(known.has(lp.id)&&!pend.has(lp.id)){changed=true;if(this.idb)try{await idbReq(this.idb,'promos','readwrite',s=>s.delete(lp.id));}catch(e){}continue;}
+          merged.push(lp);pend.add(lp.id);}
+        LS.set('fc_pend',[...pend]);LS.set('fc_known',srv.map(x=>x.id));
+        if(changed){S.promos=merged;if(this.idb)for(const p of merged){try{await idbReq(this.idb,'promos','readwrite',s=>s.put(clone(p)));}catch(e){}}
+          const ae=document.activeElement;if(!(ae&&(ae.tagName==='INPUT'||ae.tagName==='SELECT'))&&$('#modal').hidden)render();}
+      }
+      for(const id of LS.get('fc_pend',[])){
+        const p=S.promos.find(x=>x.id===id);
+        if(p)await gsApi('save',{promo:clone(p),rows:medRows(p)});
+        LS.set('fc_pend',LS.get('fc_pend',[]).filter(x=>x!==id));
+        const k=new Set(LS.get('fc_known',[]));k.add(id);LS.set('fc_known',[...k]);
+      }
+      this.lastSync=Date.now();this.syncErr='';
+    }catch(e){if(e&&e.message==='clave')return;console.warn(e);this.syncErr=navigator.onLine===false?'sin conexión':'error';}
+    finally{this.syncing=false;setSync();const again=this.syncAgain;this.syncAgain=false;if(again)this.sync(again===true);}
+  },
+  pending(){return LS.get('fc_pend',[]).length+LS.get('fc_phq',[]).length+LS.get('fc_del',[]).length;},
+  async wipe(){
+    ['fc_gs','fc_pend','fc_phq','fc_del','fc_known'].forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
+    if(this.idb){try{await idbReq(this.idb,'promos','readwrite',s=>s.clear());await idbReq(this.idb,'photos','readwrite',s=>s.clear());}catch(e){}}
+    memPhotos.clear();this.urls.clear();S.promos=[];this.gs=null;this.mode='local';this.locked=true;route={v:'home'};render();
   }
 };
+async function gsApi(action,data){
+  const g=Store.gs;if(!g)throw new Error('sin configurar');
+  const r=await fetch(g.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({key:g.key,action,...(data||{})})});
+  let j;try{j=await r.json();}catch(e){throw new Error('respuesta');}
+  if(!j.ok&&j.error==='clave'){if(Store.mode==='gs'){toast('La clave ya no es válida. Se ha cerrado la sesión.');await Store.wipe();}throw new Error('clave');}
+  if(!j.ok)throw new Error(j.error||'error');
+  return j;
+}
+function medRows(p){
+  const rows=[];
+  for(const pi of p.pisos)pi.frentes.forEach((f,i)=>{
+    const m=k=>{const v=num(f.m[k]);return v==null?'':v;};
+    const g=geom(f,cfgOf(p,f).cuts),d=g?dims(g.fin):null,r1=v=>d?Math.round(v*10)/10:'';
+    const en=(f.enchufes||[]).map(e=>ENT[e.n]||'sencillo');
+    rows.push([p.title||'',pi.title||'',f.name||('Frente '+(i+1)),m('lt'),m('lb'),m('ul'),m('dl'),m('rt'),m('rb'),m('ur'),m('dr'),
+      d?r1(d.top):'',d?r1(d.bottom):'',d?r1(d.left):'',d?r1(d.right):'',en.length?en.length+' ('+en.join(', ')+')':'',new Date(p.updated||Date.now()).toLocaleString('es-ES')]);
+  });
+  return rows;
+}
 function setSync(st){
   const el=$('#sync');
   if(st==='saving'){el.textContent='Guardando…';return;}
   if(st==='err'){el.textContent='⚠ Error al guardar';return;}
-  el.textContent=Store.mode==='cloud'?'☁︎ Guardado':Store.mode==='local'?'Guardado en este móvil':'Sin guardar';
+  if(Store.mode==='gs'){
+    if(st==='sync'){el.textContent='Sincronizando…';return;}
+    const n=Store.pending();
+    el.textContent=Store.syncErr?(Store.syncErr==='sin conexión'?'Sin conexión'+(n?' · pendiente':''):'⚠ Error de sincronización'):(n?'Pendiente de subir':'☁︎ Sincronizado');
+    const sc=$('#syncinfo');if(sc)sc.textContent=syncInfo();
+    return;
+  }
+  el.textContent=Store.locked?'':Store.mode==='cloud'?'☁︎ Guardado':Store.mode==='local'?'Guardado en este móvil':'Sin guardar';
 }
-
+function syncInfo(){
+  const n=Store.pending();
+  return (Store.lastSync?'Última sincronización: '+new Date(Store.lastSync).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'Aún sin sincronizar')+(n?' · '+n+' cambio'+(n>1?'s':'')+' pendiente'+(n>1?'s':''):'')+(Store.syncErr?' · '+Store.syncErr:'');
+}
+function renderLock(app){
+  $('#ttl').textContent='Frentes de cocina';$('#back').hidden=true;$('#sync').textContent='';
+  app.innerHTML=`<div class="card" style="margin-top:20px"><div style="font-size:20px;font-weight:700;margin-bottom:6px">🔒 Acceso</div>
+   <p class="note" style="font-size:15px;margin-top:0">Introduce la dirección del puente de Google y la clave para usar la aplicación en este dispositivo.</p>
+   <div class="fld" style="margin-bottom:10px"><label class="note">Dirección del puente (termina en /exec)</label><input class="in" id="gsUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(LS.get('fc_gs_url',''))}"></div>
+   <div class="fld" style="margin-bottom:12px"><label class="note">Clave</label><input class="in" id="gsKey" type="password" autocomplete="current-password"></div>
+   <button class="btn pri full" id="gsGo">Entrar</button><p class="note" id="gsMsg" style="color:var(--red);min-height:1.4em"></p></div>`;
+  $('#gsGo').onclick=async()=>{
+    const url=$('#gsUrl').value.trim(),key=$('#gsKey').value,msg=$('#gsMsg');
+    if(!/^https:\/\/script\.google(usercontent)?\.com\/.+/.test(url)){msg.textContent='La dirección no parece la de un Apps Script.';return;}
+    if(!key){msg.textContent='Falta la clave.';return;}
+    msg.style.color='var(--mut)';msg.textContent='Comprobando…';
+    LS.set('fc_gs_url',url);
+    try{
+      const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({key,action:'ping'})});const j=await r.json();
+      if(!j.ok){msg.style.color='var(--red)';msg.textContent=j.error==='clave'?'Clave incorrecta.':'El puente respondió con un error.';return;}
+    }catch(e){msg.style.color='var(--red)';msg.textContent='No se pudo conectar. Revisa la dirección y la conexión.';return;}
+    Store.gs={url,key};LS.set('fc_gs',Store.gs);Store.locked=false;Store.mode='gs';
+    let local=[];try{if(Store.idb)local=await idbReq(Store.idb,'promos','readonly',s=>s.getAll())||[];}catch(e){}
+    S.promos=local;render();Store.startSync();
+  };
+}
 const imgCache=new Map();
 async function getImg(ref){
   const url=await Store.photoURL(ref);if(!url)return null;
@@ -429,6 +558,7 @@ function fileBtn(label,cls,kind){
 // ---------- Render ----------
 function render(){
   const app=$('#app'),back=$('#back');
+  if(Store.locked)return renderLock(app);
   if(route.v!=='home'&&!P())route={v:'home'};
   if(route.v==='piso'&&!PI())route={v:'promo',p:route.p};
   if(route.v==='frente'&&!F())route=PI()?{v:'piso',p:route.p,pi:route.pi}:{v:'home'};
@@ -453,6 +583,8 @@ function renderHome(app){
       return `<button class="item" data-act="openPromo" data-id="${p.id}"><div class="grow"><div class="t">${esc(p.title)}</div><div class="s">${p.pisos.length} piso${p.pisos.length==1?'':'s'} · ${nf} frente${nf==1?'':'s'}</div></div><span class="chev">›</span></button>`;}).join('')
     :`<div class="empty">Aún no hay promociones.<br>Crea la primera para empezar.</div>`)+
     `<button class="btn pri full" data-act="newPromo">+ Nueva promoción</button>
+     ${Store.mode==='gs'?`<h2>Sincronización</h2><div class="card"><div class="note" id="syncinfo">${esc(syncInfo())}</div>
+       <div class="grid2" style="margin-top:10px"><button class="btn sm" data-act="syncNow">Sincronizar ahora</button><button class="btn sm dang" data-act="logout">Cerrar sesión</button></div></div>`:''}
      <h2>Copia de seguridad</h2>
      <label class="chk"><input type="checkbox" id="incFotos" ${incFotos?'checked':''}> Incluir fotos</label>
      <p class="note" style="margin:-4px 2px 10px">Sin fotos la copia pesa muy poco. Al importar sin fotos se conservan las fotos que ya tengas en este dispositivo.</p>
@@ -792,6 +924,11 @@ const A={
   async renFrente(){const f=F(),pi=PI(),t=await askText('Renombrar frente','Nombre',f.name||('Frente '+(pi.frentes.indexOf(f)+1)));if(t){f.name=t;Store.save(P());render();}},
   async delFrente(){const p=P(),pi=PI(),f=F();if(!await confirmDel('este frente'))return;pi.frentes=pi.frentes.filter(x=>x!==f);Store.save(p);go({v:'piso',p:p.id,pi:pi.id});},
   mode(d){mode=d.m;render();},
+  syncNow(){Store.sync(true);},
+  async logout(){
+    const n=Store.pending();
+    const r=await modal({title:'¿Cerrar sesión en este dispositivo?',text:(n?'Hay '+n+' cambio(s) sin subir y se perderán. ':'')+'Se borrarán los datos guardados en este dispositivo (en Google siguen intactos). Para volver a entrar hará falta la clave.',buttons:[{label:'Cancelar',v:null},{label:'Cerrar sesión',v:'ok',dang:true}]});
+    if(r.v)await Store.wipe();},
   addEnc(){encForm(null);},
   editEnc(d){encForm(+d.i);},
   dcol(d){drawColor=d.c;try{localStorage.setItem('fc_dc',drawColor);}catch(e){}render();},
