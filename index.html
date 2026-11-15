@@ -323,7 +323,7 @@ const Store={
     try{this.idb=await idbOpen();this.mode='local';}catch(e){this.idb=null;}
     if(!inClaude){
       this.gs=LS.get('fc_gs',null);
-      if(!this.gs||!this.gs.url||!this.gs.key){this.locked=true;this.readyP=Promise.resolve();render();return;}
+      if(!this.gs||!this.gs.url||!(this.gs.token||this.gs.key)){this.locked=true;this.readyP=Promise.resolve();render();return;}
       this.mode='gs';
     }
     let local=[];try{if(this.idb)local=await idbReq(this.idb,'promos','readonly',s=>s.getAll())||[];}catch(e){}
@@ -410,6 +410,11 @@ const Store={
     if(navigator.onLine===false){setSync();return;}
     this.syncing=true;setSync('sync');
     try{
+      if(!this.gs.token){// dispositivos configurados con la versión anterior: piden su pase
+        const r=await gsLogin(this.gs.url,this.gs.key);
+        if(!r.ok){if(r.error==='clave'){toast('La clave ya no es válida. Se ha cerrado la sesión.');await this.wipe();return;}throw new Error(r.error||'error');}
+        this.gs={url:this.gs.url,token:r.token};LS.set('fc_gs',this.gs);
+      }
       // fotos antiguas guardadas solo en este dispositivo -> pasan a Drive
       for(const p of S.promos){let ch=false;for(const pi of p.pisos)for(const f of pi.frentes)if(f.photo&&f.photo.l){const q=LS.get('fc_phq',[]);q.push(f.photo.l);LS.set('fc_phq',q);f.photo={g:f.photo.l};ch=true;}
         if(ch){const pe=new Set(LS.get('fc_pend',[]));pe.add(p.id);LS.set('fc_pend',[...pe]);if(this.idb)await idbReq(this.idb,'promos','readwrite',s=>s.put(clone(p)));}}
@@ -440,7 +445,7 @@ const Store={
         const k=new Set(LS.get('fc_known',[]));k.add(id);LS.set('fc_known',[...k]);
       }
       this.lastSync=Date.now();this.syncErr='';
-    }catch(e){if(e&&e.message==='clave')return;console.warn(e);this.syncErr=navigator.onLine===false?'sin conexión':'error';}
+    }catch(e){if(e&&e.message==='clave')return;console.warn(e);this.syncErr=navigator.onLine===false?'sin conexión':(e&&e.message==='bloqueado'?'puente bloqueado 15 min por intentos fallidos':'error');}
     finally{this.syncing=false;setSync();const again=this.syncAgain;this.syncAgain=false;if(again)this.sync(again===true);}
   },
   pending(){return LS.get('fc_pend',[]).length+LS.get('fc_phq',[]).length+LS.get('fc_del',[]).length;},
@@ -452,11 +457,16 @@ const Store={
 };
 async function gsApi(action,data){
   const g=Store.gs;if(!g)throw new Error('sin configurar');
-  const r=await fetch(g.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({key:g.key,action,...(data||{})})});
+  const r=await fetch(g.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:g.token,action,...(data||{})})});
   let j;try{j=await r.json();}catch(e){throw new Error('respuesta');}
+  if(!j.ok&&j.error==='bloqueado')throw new Error('bloqueado');
   if(!j.ok&&j.error==='clave'){if(Store.mode==='gs'){toast('La clave ya no es válida. Se ha cerrado la sesión.');await Store.wipe();}throw new Error('clave');}
   if(!j.ok)throw new Error(j.error||'error');
   return j;
+}
+async function gsLogin(url,key){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({key,action:'login'})});
+  return await r.json();
 }
 function medRows(p){
   const rows=[];
@@ -500,10 +510,10 @@ function renderLock(app){
     msg.style.color='var(--mut)';msg.textContent='Comprobando…';
     LS.set('fc_gs_url',url);
     try{
-      const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({key,action:'ping'})});const j=await r.json();
-      if(!j.ok){msg.style.color='var(--red)';msg.textContent=j.error==='clave'?'Clave incorrecta.':'El puente respondió con un error.';return;}
+      var j=await gsLogin(url,key);
+      if(!j.ok){msg.style.color='var(--red)';msg.textContent=j.error==='clave'?'Clave incorrecta.':j.error==='bloqueado'?'Demasiados intentos fallidos. Espera 15 minutos y vuelve a probar.':'El puente respondió con un error.';return;}
     }catch(e){msg.style.color='var(--red)';msg.textContent='No se pudo conectar. Revisa la dirección y la conexión.';return;}
-    Store.gs={url,key};LS.set('fc_gs',Store.gs);Store.locked=false;Store.mode='gs';
+    Store.gs={url,token:j.token};LS.set('fc_gs',Store.gs);Store.locked=false;Store.mode='gs';
     let local=[];try{if(Store.idb)local=await idbReq(Store.idb,'promos','readonly',s=>s.getAll())||[];}catch(e){}
     S.promos=local;render();Store.startSync();
   };
