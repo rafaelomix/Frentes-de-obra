@@ -71,6 +71,14 @@ table.dims td:last-child{text-align:right;font-weight:700;font-variant-numeric:t
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30;max-width:90%}
 #toast.show{opacity:1}
 .hidefile{display:none}
+#dictbar{position:fixed;left:0;right:0;bottom:0;z-index:15;background:#111827;color:#fff;padding:12px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.25)}
+#dictbar[hidden]{display:none}
+#dictbar .lab{font-size:19px;font-weight:700;display:flex;align-items:center;gap:8px}
+#dictbar .heard{min-height:22px;font-size:15px;opacity:.85;margin:4px 0 10px}
+#dictbar .btns{display:flex;gap:8px}#dictbar .btns .btn{flex:1;min-height:44px}
+input.in.dicting{outline:3px solid #f59e0b;outline-offset:2px}
+.mic{display:inline-block;width:12px;height:12px;border-radius:50%;background:#ef4444;animation:pul 1s infinite}
+@keyframes pul{50%{opacity:.25}}
 .dtools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-2px 0 10px}
 .sw{width:34px;height:34px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #d1d5db;cursor:pointer;padding:0}
 .sw.on{box-shadow:0 0 0 3px var(--hd)}
@@ -85,6 +93,7 @@ table.dims td:last-child{text-align:right;font-weight:700;font-variant-numeric:t
 <main id="app"></main>
 <div id="modal" hidden><div class="box" id="mbox"></div></div>
 <div id="toast"></div>
+<div id="dictbar" hidden></div>
 <input type="file" id="fCam" class="hidefile" accept="image/*" capture="environment">
 <input type="file" id="fGal" class="hidefile" accept="image/*">
 <input type="file" id="fImp" class="hidefile" accept=".json,application/json">
@@ -106,6 +115,29 @@ function geom(f,c){
 }
 const dist=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1]);
 const ENT={1:'sencillo',2:'doble',3:'triple',4:'cuádruple'};
+// ---- Dictado: interpretar lo que se dice ----
+const NUMW={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,
+ dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiun:21,veintiuno:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,
+ veintisiete:27,veintiocho:28,veintinueve:29,treinta:30,cuarenta:40,cincuenta:50,sesenta:60,setenta:70,ochenta:80,noventa:90,cien:100,ciento:100,
+ doscientos:200,doscientas:200,trescientos:300,cuatrocientos:400,quinientos:500,seiscientos:600,setecientos:700,ochocientos:800,novecientos:900};
+function wordsToNum(ws){let total=0,cur=0,any=false;for(const w of ws){if(!w||w==='y')continue;if(w==='mil'){cur=(cur||1)*1000;total+=cur;cur=0;any=true;continue;}
+  if(/^\d+$/.test(w)){cur+=+w;any=true;continue;}if(!(w in NUMW))return null;cur+=NUMW[w];any=true;}return any?total+cur:null;}
+function parseSpoken(t){
+  t=String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[¿?¡!]/g,' ').trim();
+  if(/\b(parar|para|stop|terminar|termina|fin|salir)\b/.test(t))return{cmd:'stop'};
+  if(/\b(atras|anterior|volver|repetir|repite)\b/.test(t))return{cmd:'back'};
+  if(/\b(siguiente|saltar|salta|igual|misma|mismo|vale|ok)\b/.test(t))return{cmd:'next'};
+  let half=0;if(/\by medio\b/.test(t)){half=0.5;t=t.replace(/\by medio\b/,' ');}
+  t=t.replace(/(\d)\s*,\s*(\d)/g,'$1.$2').replace(/\s+(coma|punto|con)\s+/g,' . ').replace(/\b(centimetros?|cm|milimetros?|mm|metros?)\b/g,' ');
+  t=t.replace(/(\d)\s*\.\s*(\d)/g,'$1.$2').replace(/\s+/g,' ').trim();
+  t=t.replace(/\b(\d{1,3})\.(\d{3})\b(?!\.)/g,'$1$2'); // 1.250 = mil doscientos cincuenta
+  const m=t.match(/^\D*?(\d+(?:\.\d+)?)\s*$/)||t.match(/^\s*(\d+(?:\.\d+)?)\b/);
+  if(m&&!/[a-z]{3,}/.test(t.replace(/\b(y)\b/g,'')))return{num:+m[1]+half};
+  const parts=t.split('.').map(x=>x.trim().split(/\s+/));
+  const a=wordsToNum(parts[0]);if(a==null)return null;
+  let dec=0;if(parts[1]){const b=wordsToNum(parts[1]);if(b==null)return null;dec=+('0.'+String(b));}
+  return{num:a+dec+half};
+}
 function cfgOf(p,f){
   if(f&&f.cfg)return{cuts:f.cfg.cuts,dia:num(f.cfg.dia)||68,sep:num(f.cfg.sep)||70};
   return{cuts:p.cuts,dia:num(p.dia)||68,sep:num(p.sep)||70};
@@ -563,7 +595,7 @@ const P=()=>S.promos.find(p=>p.id===route.p);
 const PI=()=>{const p=P();return p&&p.pisos.find(x=>x.id===route.pi);};
 const F=()=>{const pi=PI();return pi&&pi.frentes.find(x=>x.id===route.f);};
 function filled(f){return KEYS.filter(k=>num(f.m[k])!=null).length;}
-function go(r){route=r;mode='med';render();window.scrollTo(0,0);}
+function go(r){dictStop();route=r;mode='med';render();window.scrollTo(0,0);}
 
 function fileBtn(label,cls,kind){
   const acc=kind==='imp'?'.json,application/json':'image/*',cap=kind.startsWith('cam')?' capture="environment"':'';
@@ -669,6 +701,8 @@ function renderFrente(app){
    <div class="grid2" style="margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
   `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Las casillas del mismo color van enlazadas: lo que escribas en la marcada con ⇢ se copia a su pareja (pared arriba → pared abajo, techo y mueble izquierda → derecha). Luego corrige la pareja si es distinta.</div>
+   <div class="row" style="margin-bottom:10px"><button class="btn sm pri" data-act="dictStart" style="flex:1">🎤 Dictar medidas</button><button class="btn sm" data-act="orderEdit">⚙ Orden</button>
+     <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label></div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div>
    <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes</div>
     <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm.</div>
@@ -685,6 +719,8 @@ function renderFrente(app){
    <button class="btn pri full" data-act="dxfFrente">Descargar DXF de este frente</button>
    <button class="btn full" style="margin-top:8px" data-act="copyDxf">Copiar DXF (texto)</button>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delFrente">Borrar frente</button>`;
+  const du=$('#dictUnit');if(du)du.onchange=()=>{dictUnit=du.value;LS.set('fc_du',dictUnit);dictBanner();};
+  app.querySelectorAll('input[data-k]').forEach(i=>i.onfocus=()=>{if(Dict){const j=DORDER.indexOf(i.dataset.k);if(j>=0){Dict.i=j;dictBanner();}}});
   app.querySelectorAll('input[data-k]').forEach(i=>i.oninput=()=>{
     const v=i.value.trim(),k=i.dataset.k;f.m[k]=v===''?null:v;i.classList.toggle('miss',num(v)==null);
     if(MIRROR[k])setMeasureInput(MIRROR[k],v);
@@ -698,6 +734,7 @@ function renderFrente(app){
   app.querySelectorAll('[data-fcut]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&f.cfg){f.cfg.cuts[i.dataset.fcut]=v;Store.save(p);renderPrev();}});
   app.querySelectorAll('[data-fset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0&&f.cfg){f.cfg[i.dataset.fset]=v;Store.save(p);renderPrev();}});
   renderPrev();
+  if(Dict)dictBanner();
   if(f.photo)setupCanvas();
 }
 
@@ -831,7 +868,97 @@ async function editMeasure(k){
   if(!r.v)return;const v=r.values[0].trim();f.m[k]=v===''?null:v;Store.save(p);
   setMeasureInput(k,v);if(MIRROR[k])setMeasureInput(MIRROR[k],v);
   drawCanvas();renderPrev();
-  if(r.v==='next'){const i=KEYS.indexOf(k);const nx=KEYS.slice(i+1).concat(KEYS.slice(0,i)).find(q=>num(f.m[q])==null);if(nx)editMeasure(nx);else toast('Todas las medidas puestas');}
+  if(r.v==='next'){const i=DORDER.indexOf(k);const seq=i<0?DORDER:DORDER.slice(i+1).concat(DORDER.slice(0,i));const nx=seq.find(q=>num(f.m[q])==null);if(nx)editMeasure(nx);else toast('Todas las medidas puestas');}
+}
+// ---------- Dictado de medidas ----------
+const SRec=window.SpeechRecognition||window.webkitSpeechRecognition;
+const DEF_ORDER=['lt','lb','ul','dl','rt','rb','ur','dr'];
+let DCFG=(()=>{const c=LS.get('fc_dorder',null);if(c&&Array.isArray(c.order)&&c.order.length===8&&DEF_ORDER.every(k=>c.order.includes(k)))return{order:c.order,skip:(c.skip||[]).filter(k=>DEF_ORDER.includes(k))};return{order:DEF_ORDER.slice(),skip:[]};})();
+let DORDER=DCFG.order.filter(k=>!DCFG.skip.includes(k));
+function orderEditor(){
+  const cfg={order:DCFG.order.slice(),skip:DCFG.skip.slice()};
+  const box=$('#mbox');
+  const draw=()=>{
+    box.innerHTML=`<h3>Orden de las casillas</h3><p class="note" style="margin-top:0">Así se recorren al dictar y con «Siguiente →». Desmarca las que no quieras que pregunte.</p>`+
+      cfg.order.map((k,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+        <input type="checkbox" data-sk="${k}" ${cfg.skip.includes(k)?'':'checked'} style="width:22px;height:22px;accent-color:var(--acc)">
+        <span style="width:22px;color:var(--mut);font-weight:700">${cfg.skip.includes(k)?'–':cfg.order.filter(x=>!cfg.skip.includes(x)).indexOf(k)+1}</span>
+        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${PAIRC[k]}"></span>
+        <span style="flex:1;${cfg.skip.includes(k)?'opacity:.45':''}">${esc(KLAB[k])}</span>
+        <button class="btn sm" data-up="${i}" ${i===0?'disabled':''}>↑</button><button class="btn sm" data-dn="${i}" ${i===7?'disabled':''}>↓</button></div>`).join('')+
+      `<div class="btns" style="margin-top:12px"><button class="btn" id="oReset">Por defecto</button><button class="btn" id="oCancel">Cancelar</button><button class="btn pri" id="oSave">Guardar</button></div>`;
+    box.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>{const i=+b.dataset.up;[cfg.order[i-1],cfg.order[i]]=[cfg.order[i],cfg.order[i-1]];draw();});
+    box.querySelectorAll('[data-dn]').forEach(b=>b.onclick=()=>{const i=+b.dataset.dn;[cfg.order[i+1],cfg.order[i]]=[cfg.order[i],cfg.order[i+1]];draw();});
+    box.querySelectorAll('[data-sk]').forEach(c=>c.onchange=()=>{const k=c.dataset.sk;cfg.skip=c.checked?cfg.skip.filter(x=>x!==k):cfg.skip.concat(k);draw();});
+    $('#oReset').onclick=()=>{cfg.order=DEF_ORDER.slice();cfg.skip=[];draw();};
+    $('#oCancel').onclick=close;
+    $('#oSave').onclick=()=>{
+      if(cfg.order.every(k=>cfg.skip.includes(k))){toast('Deja al menos una casilla marcada');return;}
+      DCFG=cfg;LS.set('fc_dorder',cfg);DORDER=cfg.order.filter(k=>!cfg.skip.includes(k));
+      if(Dict){Dict.i=Math.min(Dict.i,DORDER.length-1);dictBanner();}
+      close();toast('Orden guardado');
+    };
+  };
+  const close=()=>{$('#modal').hidden=true;box.innerHTML='';};
+  $('#modal').onclick=e=>{if(e.target.id==='modal')close();};
+  draw();$('#modal').hidden=false;
+}
+let dictUnit=LS.get('fc_du','cm'),Dict=null;
+function dictStart(){
+  if(!SRec){toast(inClaude?'Para dictar usa la versión de GitHub (Safari en iPad o Chrome en Android).':'Este navegador no permite dictar. Usa Safari en iPad o Chrome en Android.');return;}
+  if(Dict)return;
+  const f=F();let i=DORDER.findIndex(k=>num(f.m[k])==null);if(i<0)i=0;
+  Dict={i,rec:null,heard:'',on:true};dictListen();dictBanner();
+}
+function dictListen(){
+  if(!Dict)return;
+  try{
+    const r=new SRec();r.lang='es-ES';r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
+    r.onresult=e=>{
+      for(let j=e.resultIndex;j<e.results.length;j++){
+        const res=e.results[j];
+        if(!res.isFinal){Dict.heard=res[0].transcript;dictBanner();continue;}
+        let done=false;for(let a=0;a<res.length&&!done;a++){const q=parseSpoken(res[a].transcript);if(q){dictApply(q,res[a].transcript);done=true;}}
+        if(!done){Dict.heard='No he entendido: «'+res[0].transcript+'»';dictBanner();}
+      }
+    };
+    r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Sin permiso para el micrófono');dictStop();}};
+    r.onend=()=>{if(Dict&&Dict.rec===r){setTimeout(()=>{if(Dict&&Dict.rec===r){try{r.start();}catch(err){Dict.heard='Pulsa 🎤 Seguir para continuar';Dict.paused=true;dictBanner();}}},150);}};
+    Dict.rec=r;Dict.paused=false;r.start();
+  }catch(e){toast('No se pudo activar el micrófono');dictStop();}
+}
+function dictApply(q,raw){
+  if(!Dict)return;
+  if(q.cmd==='stop')return dictStop();
+  if(q.cmd==='back'){Dict.i=Math.max(0,Dict.i-1);Dict.heard='';return dictBanner();}
+  if(q.cmd==='next'){Dict.heard='';return dictNext();}
+  const k=DORDER[Dict.i],v=Math.round(q.num*(dictUnit==='cm'?10:1)*10)/10,sv=String(v);
+  setMeasureInput(k,sv);if(MIRROR[k])setMeasureInput(MIRROR[k],sv);
+  Store.save(P());drawCanvas();renderPrev();
+  try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}
+  Dict.heard='✓ '+KLAB[k]+': '+fmt(v)+' mm';dictNext();
+}
+function dictNext(){
+  if(!Dict)return;Dict.i++;
+  if(Dict.i>=DORDER.length){toast('Medidas dictadas');return dictStop();}
+  dictBanner();
+}
+function dictStop(){
+  if(!Dict)return;const r=Dict.rec;Dict=null;try{r&&r.stop();}catch(e){}
+  document.querySelectorAll('input.dicting').forEach(x=>x.classList.remove('dicting'));
+  const b=$('#dictbar');b.hidden=true;b.innerHTML='';
+}
+function dictBanner(){
+  const b=$('#dictbar');if(!Dict){b.hidden=true;return;}
+  const k=DORDER[Dict.i];
+  document.querySelectorAll('input[data-k]').forEach(x=>x.classList.toggle('dicting',x.dataset.k===k));
+  b.hidden=false;
+  b.innerHTML=`<div class="lab">${Dict.paused?'⏸':'<span class="mic"></span>'}<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${PAIRC[k]}"></span>${esc(KLAB[k])}</div>
+    <div class="note" style="color:#d1d5db">Di la medida en <b>${dictUnit}</b> · ${Dict.i+1} de ${DORDER.length} · «igual» salta, «atrás» vuelve, «parar» termina</div>
+    <div class="heard">${esc(Dict.heard||'')}</div>
+    <div class="btns"><button class="btn sm" id="dBack">← Atrás</button><button class="btn sm" id="dNext">Saltar →</button>${Dict.paused?'<button class="btn sm pri" id="dGo">🎤 Seguir</button>':''}<button class="btn sm dang" id="dStop">■ Parar</button></div>`;
+  $('#dBack').onclick=()=>dictApply({cmd:'back'});$('#dNext').onclick=()=>dictApply({cmd:'next'});$('#dStop').onclick=dictStop;
+  const g=$('#dGo');if(g)g.onclick=()=>{Dict.heard='';dictListen();dictBanner();};
 }
 function setMeasureInput(k,v){
   const f=F();f.m[k]=v===''?null:v;
@@ -938,6 +1065,8 @@ const A={
   async renFrente(){const f=F(),pi=PI(),t=await askText('Renombrar frente','Nombre',f.name||('Frente '+(pi.frentes.indexOf(f)+1)));if(t){f.name=t;Store.save(P());render();}},
   async delFrente(){const p=P(),pi=PI(),f=F();if(!await confirmDel('este frente'))return;pi.frentes=pi.frentes.filter(x=>x!==f);Store.save(p);go({v:'piso',p:p.id,pi:pi.id});},
   mode(d){mode=d.m;render();},
+  dictStart(){dictStart();},
+  orderEdit(){orderEditor();},
   syncNow(){Store.sync(true);},
   async logout(){
     const n=Store.pending();
