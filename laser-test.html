@@ -17,6 +17,7 @@ button.sec{background:#666}
 </style></head><body>
 <h1>Prueba láser Bluetooth (Bosch GLM / Leica DISTO)</h1>
 <button id="btnCon">Conectar láser</button>
+<button id="btnMedir">Medir desde el móvil</button>
 <button id="btnDes" class="sec">Desconectar</button>
 <button id="btnLimpiar" class="sec">Limpiar</button>
 <div id="estado">Pulsa «Conectar láser».</div>
@@ -50,8 +51,12 @@ button.sec{background:#666}
 (function (global) {
   'use strict';
 
-  const BOSCH_SERVICE = '02a6c0d0-0451-4000-b000-fb3210111989';
-  const BOSCH_CHAR    = '02a6c0d1-0451-4000-b000-fb3210111989';
+  // Bosch: los GLM nuevos usan 02a6c0d0…; los GLM 50 C antiguos usan 00005301…
+  const BOSCH_SERVICES = [
+    '02a6c0d0-0451-4000-b000-fb3210111989',
+    '00005301-0000-0041-5253-534f46540000'
+  ];
+  const BOSCH_MEDIR = new Uint8Array([0xC0, 0x56, 0x01, 0x00, 0x1E]);
   // Activa el envío automático de cada medida al pulsar el botón del láser
   const BOSCH_AUTOSYNC = new Uint8Array([0xC0, 0x55, 0x02, 0x01, 0x00, 0x1A]);
 
@@ -98,7 +103,7 @@ button.sec{background:#666}
         const device = await navigator.bluetooth.requestDevice({
           // Muestra todos los dispositivos BLE cercanos: algunos láser no anuncian su servicio ni un nombre fijo
           acceptAllDevices: true,
-          optionalServices: [BOSCH_SERVICE, LEICA_SERVICE]
+          optionalServices: [...BOSCH_SERVICES, LEICA_SERVICE]
         });
         this.device = device;
         device.addEventListener('gattserverdisconnected', () => {
@@ -114,24 +119,25 @@ button.sec{background:#666}
         } catch (e) { this._estado('No se pudieron listar servicios: ' + e.message); }
 
         // ¿Bosch?
-        try {
-          const srv = await server.getPrimaryService(BOSCH_SERVICE);
-          this._estado('Servicio Bosch encontrado');
-          const ch = await srv.getCharacteristic(BOSCH_CHAR);
-          const p = ch.properties;
-          this._estado('Característica Bosch: notify=' + p.notify + ' indicate=' + p.indicate + ' write=' + p.write + ' writeNoResp=' + p.writeWithoutResponse);
-          ch.addEventListener('characteristicvaluechanged', (e) => this._bosch(e.target.value));
-          await ch.startNotifications();
+        for (const uuid of BOSCH_SERVICES) {
           try {
-            if (p.write) await ch.writeValueWithResponse(BOSCH_AUTOSYNC);
-            else await ch.writeValueWithoutResponse(BOSCH_AUTOSYNC);
-          } catch (e) {
-            this._estado('Aviso al activar envío automático: ' + e.message);
-          }
-          this.marca = 'Bosch';
-          this._estado('Conectado: ' + (device.name || 'Bosch GLM') + '. Pulsa el botón de medir del láser.');
-          return true;
-        } catch (e) { this._estado('Bosch: ' + e.message); }
+            const srv = await server.getPrimaryService(uuid);
+            this._estado('Servicio Bosch encontrado: ' + uuid);
+            const chars = await srv.getCharacteristics();
+            const ch = chars.find(c => c.properties.indicate || c.properties.notify);
+            if (!ch) { this._estado('Bosch: sin característica de avisos'); continue; }
+            const p = ch.properties;
+            this._estado('Característica ' + ch.uuid + ' indicate=' + p.indicate + ' notify=' + p.notify + ' write=' + p.write);
+            ch.addEventListener('characteristicvaluechanged', (e) => this._bosch(e.target.value));
+            await ch.startNotifications();
+            this._chBosch = ch;
+            try { await this._escribir(BOSCH_AUTOSYNC); }
+            catch (e) { this._estado('Aviso al activar envío automático: ' + e.message); }
+            this.marca = 'Bosch';
+            this._estado('Conectado: ' + (device.name || 'Bosch GLM') + '. Pulsa el botón de medir del láser.');
+            return true;
+          } catch (e) { this._estado('Bosch ' + uuid.slice(0, 8) + ': ' + e.message); }
+        }
 
         // ¿Leica?
         try {
@@ -168,6 +174,20 @@ button.sec{background:#666}
       // Respuesta a otras órdenes (C0 55 02 …, 00 00 …): no es una medida
     },
 
+    async _escribir(bytes) {
+      const ch = this._chBosch;
+      if (!ch) return;
+      if (ch.properties.write) await ch.writeValueWithResponse(bytes);
+      else await ch.writeValueWithoutResponse(bytes);
+    },
+
+    // Dispara una medida desde la app (solo Bosch)
+    async medir() {
+      if (!this._chBosch) { this._estado('Primero conecta un láser Bosch'); return; }
+      try { await this._escribir(BOSCH_MEDIR); this._estado('Orden de medir enviada'); }
+      catch (e) { this._estado('Error al medir: ' + e.message); }
+    },
+
     desconectar() {
       if (this.device && this.device.gatt.connected) this.device.gatt.disconnect();
     }
@@ -193,6 +213,7 @@ Laser.onMedida=mm=>{
   if(navigator.vibrate)navigator.vibrate(80);
 };
 document.getElementById('btnCon').onclick=()=>Laser.conectar();
+document.getElementById('btnMedir').onclick=()=>Laser.medir();
 document.getElementById('btnDes').onclick=()=>Laser.desconectar();
 document.getElementById('btnLimpiar').onclick=()=>{inputs.forEach(x=>x.value='');idx=0;marcar();raw.textContent='';document.getElementById('ultima').textContent='— mm';};
 if(!Laser.soportado())Laser.onEstado('Este navegador no tiene Bluetooth web. En Android usa Chrome; en iPad usa Bluefy.');
