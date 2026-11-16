@@ -160,6 +160,12 @@ function copGeom(cp,g){
 }
 function copDesc(cp){const d=num(cp.desc),dd=d==null?14:Math.abs(d),pw=num(cp.largo),L=copLen(cp);
   return (cp.lado==='izq'?'izquierda':cp.lado==='dcha'?'derecha':'sin lado')+' · '+(pw>0?'pared '+fmt(pw)+' − '+fmt(dd)+' = '+fmt(L):'¿medida de pared?')+' × '+fmt(num(cp.alt)||45);}
+// Enchufe doble/triple/cuádruple: una sola figura (colisa) = semicírculos en los extremos unidos en recto. Polilínea cerrada con arcos (bulge).
+function encSlot(g,R){
+  const b=bbox(g.pts);
+  if(b.h<1e-6){const y=g.c[1];return[[b.minX,y+R,0],[b.maxX,y+R,-1],[b.maxX,y-R,0],[b.minX,y-R,-1]];}
+  const x=g.c[0];return[[x-R,b.minY,0],[x-R,b.maxY,-1],[x+R,b.maxY,0],[x+R,b.minY,-1]];
+}
 function edgeDist(fin,c){
   const[TL,TR,BR,BL]=fin;
   const xl=BL[0]+(c[1]-BL[1])*(TL[0]-BL[0])/((TL[1]-BL[1])||1);
@@ -183,7 +189,7 @@ function DXFWriter(){
   const g={
     line(arr,own,ly,a,b,byblock,lt){E(arr,own,'LINE',['8',ly,...(lt?['6',lt]:[]),...(byblock?['62','0']:[]),'100','AcDbLine','10',D(a[0]),'20',D(a[1]),'30','0','11',D(b[0]),'21',D(b[1]),'31','0']);},
     text(arr,own,ly,p,h,s,rot,ha,va,byblock){E(arr,own,'TEXT',['8',ly,...(byblock?['62','0']:[]),'100','AcDbText','10',D(p[0]),'20',D(p[1]),'30','0','40',D(h),'1',dxfEsc(s),'50',D(rot||0),'72',String(ha||0),'11',D(p[0]),'21',D(p[1]),'31','0','100','AcDbText','73',String(va||0)]);},
-    lwpoly(arr,own,ly,pts){E(arr,own,'LWPOLYLINE',['8',ly,'100','AcDbPolyline','90',String(pts.length),'70','1','43','0',...pts.flatMap(q=>['10',D(q[0]),'20',D(q[1])])]);},
+    lwpoly(arr,own,ly,pts){E(arr,own,'LWPOLYLINE',['8',ly,'100','AcDbPolyline','90',String(pts.length),'70','1','43','0',...pts.flatMap(q=>['10',D(q[0]),'20',D(q[1]),...(q[2]?['42',D(q[2])]:[])])]);},
     circle(arr,own,ly,p,r){E(arr,own,'CIRCLE',['8',ly,'100','AcDbCircle','10',D(p[0]),'20',D(p[1]),'30','0','40',D(r)]);}
   };
   const W={
@@ -295,7 +301,7 @@ function buildDXF(promo,pisos){
       cota(LY.gen,fin[0],fin[3],cen);cota(LY.gen,fin[1],fin[2],cen);
       // Enchufes
       encs.forEach(q=>{
-        q.g.pts.forEach(t=>W.circle(LY.enc,S(t),R));
+        if(q.g.pts.length>1)W.lwpoly(LY.enc,encSlot(q.g,R).map(t=>[...S(t),t[2]]));else W.circle(LY.enc,S(q.g.pts[0]),R);
         const ec=q.g.c,gb=bbox(q.g.pts);
         dimLine(LY.obra,S([0,ec[1]]),S(ec),HO);
         dimLine(LY.obra,S([ec[0],0]),S(ec),HO);
@@ -780,14 +786,10 @@ function renderPrev(){
    <polygon points="${pt(g.meas)}" fill="none" stroke="#9ca3af" stroke-dasharray="${fs/2} ${fs/3}" vector-effect="non-scaling-stroke"/>
    <polygon points="${pt(g.fin)}" fill="#fed7aa" fill-opacity=".55" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>
    ${lab(fin[0],fin[1],d.top)}${lab(fin[3],fin[2],d.bottom)}${lab(fin[0],fin[3],d.left)}${lab(fin[1],fin[2],d.right)}
-   ${encs.map(x=>x.g.pts.map(q=>`<circle cx="${q[0]}" cy="${-q[1]}" r="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`).join('')+`<text x="${x.g.c[0]}" y="${-(x.g.c[1]+R*(x.e.ori==='v'?(+x.e.n||1):1)+fs*0.4)}" font-size="${fs*0.8}" text-anchor="middle" fill="#2563eb" font-weight="700">E${x.i+1}</text>`).join('')}
+   ${encs.map(x=>(x.g.pts.length>1?(()=>{const b=bbox(x.g.pts);return `<rect x="${b.minX-R}" y="${-b.maxY-R}" width="${b.w+2*R}" height="${b.h+2*R}" rx="${R}" ry="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`;})():`<circle cx="${x.g.pts[0][0]}" cy="${-x.g.pts[0][1]}" r="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`)+`<text x="${x.g.c[0]}" y="${-(x.g.c[1]+R*(x.e.ori==='v'?(+x.e.n||1):1)+fs*0.4)}" font-size="${fs*0.8}" text-anchor="middle" fill="#2563eb" font-weight="700">E${x.i+1}</text>`).join('')}
    ${cops.map(q=>`<polygon points="${pt(q.pts)}" fill="#bae6fd" fill-opacity=".7" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/><text x="${(q.pts[0][0]+q.pts[1][0])/2}" y="${-q.pts[2][1]+fs*0.9}" font-size="${fs*0.8}" text-anchor="middle" dominant-baseline="middle" fill="#075985" font-weight="700">C${q.j+1} · ${fmt(q.L)} × ${fmt(q.A)}</text>`).join('')}</svg>
    ${out.length?`<div class="warn" style="margin-top:8px">⚠ ${out.map(x=>'E'+(x.i+1)).join(', ')} se sale de la pieza. Revisa las medidas.</div>`:''}
-   <table class="dims"><tr><td>Lado de arriba</td><td>${fmt(d.top)} mm</td></tr><tr><td>Lado de abajo</td><td>${fmt(d.bottom)} mm</td></tr>
-   <tr><td>Altura izquierda</td><td>${fmt(d.left)} mm</td></tr><tr><td>Altura derecha</td><td>${fmt(d.right)} mm</td></tr>
-   <tr><td>Diagonal ↘ (arriba izq → abajo dcha)</td><td>${fmt(d.d1)} mm</td></tr><tr><td>Diagonal ↗ (abajo izq → arriba dcha)</td><td>${fmt(d.d2)} mm</td></tr>
-   <tr><td>Ancho máximo × alto máximo</td><td>${fmt(bbox(fin).w)} × ${fmt(bbox(fin).h)}</td></tr>
-   ${encs.map(x=>{const ed=edgeDist(g.fin,x.g.c);return `<tr><td>E${x.i+1} eje: desde borde izq / desde abajo</td><td>${fmt(ed.izq)} / ${fmt(ed.abajo)}</td></tr>`;}).join('')}
+   <table class="dims"><tr><td>Ancho máximo × alto máximo</td><td>${fmt(bbox(fin).w)} × ${fmt(bbox(fin).h)}</td></tr>
    ${cops.map(q=>`<tr><td>Copete C${q.j+1}${q.falta?' (falta la medida de pared, dibujado a 600)':''}</td><td>${fmt(q.L)} × ${fmt(q.A)}</td></tr>`).join('')}</table>`;
 }
 
