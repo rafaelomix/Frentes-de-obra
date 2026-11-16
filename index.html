@@ -124,7 +124,7 @@ const NUMW={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7
 function wordsToNum(ws){let total=0,cur=0,any=false;for(const w of ws){if(!w||w==='y')continue;if(w==='mil'){cur=(cur||1)*1000;total+=cur;cur=0;any=true;continue;}
   if(/^\d+$/.test(w)){cur+=+w;any=true;continue;}if(!(w in NUMW))return null;cur+=NUMW[w];any=true;}return any?total+cur:null;}
 function parseSpoken(t){
-  t=String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[¿?¡!]/g,' ').trim();
+  t=pegados(String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[¿?¡!]/g,' ')).trim();
   if(/\b(parar|para|stop|terminar|termina|fin|salir)\b/.test(t))return{cmd:'stop'};
   if(/\b(atras|anterior|volver|repetir|repite)\b/.test(t))return{cmd:'back'};
   if(/\b(siguiente|saltar|salta|igual|misma|mismo|vale|ok)\b/.test(t))return{cmd:'next'};
@@ -139,6 +139,47 @@ function parseSpoken(t){
   let dec=0;if(parts[1]){const b=wordsToNum(parts[1]);if(b==null)return null;dec=+('0.'+String(b));}
   return{num:a+dec+half};
 }
+// Modo obra: metros + centímetros (+ "con X" o "y medio" = milímetros). Devuelve mm.
+// "uno cincuenta y siete con cinco" = 1575 · "dos treinta y tres" = 2330 · "157" = 1570
+function pegados(t){t=t.replace(/(\d)[.,](\d)/g,'$1\u00a7$2').replace(/[.,;:]/g,' ').replace(/\u00a7/g,',');return t.replace(/(inta|enta)y(?=[a-z])/g,'$1 y ').replace(/(\S)ymedio\b/g,'$1 y medio').replace(/\bymedio\b/g,'y medio');}
+function groupNums(ws){
+  const out=[];let cur=null,last=null,y=false;
+  for(const w of ws){
+    if(!w)continue;if(w==='y'){y=true;continue;}
+    if(/^\d+$/.test(w)){const v=+w;
+      if(cur!=null&&last==='t'&&y&&v<10){cur+=v;last='u';y=false;continue;}
+      if(cur!=null)out.push(cur);cur=v;last=(v>=20&&v<100&&v%10===0)?'t':'d';y=false;continue;}
+    const v=NUMW[w];if(v==null)return null;
+    const cls=v>=100?'h':(v>=20&&v%10===0)?'t':'u';
+    const join=cur!=null&&((last==='h'&&v<100)||(last==='t'&&y&&v<10));
+    if(join){cur+=v;}else{if(cur!=null)out.push(cur);cur=v;}
+    last=join&&last==='h'&&cls!=='u'?'t':cls;y=false;
+  }
+  if(cur!=null)out.push(cur);
+  return out.length?out:null;
+}
+function parseObra(t){
+  t=pegados(String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[¿?¡!]/g,' '))
+    .replace(/\b(centimetros?|cm|milimetros?|mm|metros?|m)\b/g,' ').replace(/\s+/g,' ').trim();
+  let extra=0;
+  if(/\by medio\b/.test(t)){extra+=5;t=t.replace(/\by medio\b/,' ').trim();}
+  const parts=t.split(/\bcon\b/);let main=parts[0].trim();
+  if(parts[1]!=null){const g=groupNums(parts[1].trim().split(/\s+/));if(!g||g.length!==1||g[0]>9)return null;extra+=g[0];}
+  main=main.replace(/(\d)\s*[,.]\s*(\d)/g,'$1.$2');
+  const d=main.match(/^(\d+)\.(\d+)$/);
+  if(d){const a=+d[1],b=d[2];let mm;
+    if(a<=9&&b.length===2)mm=a*1000+(+b)*10;        // 1,57  -> 1570
+    else if(a<=9&&b.length===3)mm=a*1000+(+b);      // 1,575 -> 1575
+    else mm=parseFloat(d[1]+'.'+b)*10;              // 157,5 cm -> 1575
+    return{mm:mm+extra};}
+  const g=groupNums(main.split(/\s+/));if(!g)return null;
+  let mm;
+  if(g.length===1)mm=g[0]*10;                                   // centímetros
+  else if(g.length===2&&g[1]<100)mm=g[0]*1000+g[1]*10;           // metros + cm
+  else if(g.length===3&&g[1]<100&&g[2]<10)mm=g[0]*1000+g[1]*10+g[2];
+  else return null;
+  return{mm:mm+extra};
+}
 function cfgOf(p,f){
   if(f&&f.cfg)return{cuts:f.cfg.cuts,dia:num(f.cfg.dia)||68,sep:num(f.cfg.sep)||70};
   return{cuts:p.cuts,dia:num(p.dia)||68,sep:num(p.sep)||70};
@@ -149,22 +190,6 @@ function encGeom(e,p){
   const cx=e.lado==='izq'?-h:h,cy=e.vpos==='abajo'?-v:v,pts=[];
   for(let i=0;i<n;i++){const o=(i-(n-1)/2)*sep;pts.push(e.ori==='v'?[cx,cy+o]:[cx+o,cy]);}
   return{c:[cx,cy],pts};
-}
-// Copete lateral (remate izq/dcha): pieza aparte de alto × largo.
-// Largo = medida de la pared en obra − descuento (12 de grosor del frente + 2 de holgura del cemento cola = 14). El frente no cambia.
-function copLen(cp){const pw=num(cp.largo),d=num(cp.desc),dd=d==null?14:Math.abs(d);return pw>0?pw-dd:null;}
-function copGeom(cp,g){
-  const m=g.m,A=num(cp.alt)||45,Lc=copLen(cp),L=Lc>0?Lc:600;
-  const x0=cp.lado==='dcha'?m.rb-L:-m.lb,yTop=Math.min(-m.dl,-m.dr)-300;
-  return{L,A,falta:!(Lc>0),pts:[[x0,yTop],[x0+L,yTop],[x0+L,yTop-A],[x0,yTop-A]]};
-}
-function copDesc(cp){const d=num(cp.desc),dd=d==null?14:Math.abs(d),pw=num(cp.largo),L=copLen(cp);
-  return (cp.lado==='izq'?'izquierda':cp.lado==='dcha'?'derecha':'sin lado')+' · '+(pw>0?'pared '+fmt(pw)+' − '+fmt(dd)+' = '+fmt(L):'¿medida de pared?')+' × '+fmt(num(cp.alt)||45);}
-// Enchufe doble/triple/cuádruple: una sola figura (colisa) = semicírculos en los extremos unidos en recto. Polilínea cerrada con arcos (bulge).
-function encSlot(g,R){
-  const b=bbox(g.pts);
-  if(b.h<1e-6){const y=g.c[1];return[[b.minX,y+R,0],[b.maxX,y+R,-1],[b.maxX,y-R,0],[b.minX,y-R,-1]];}
-  const x=g.c[0];return[[x-R,b.minY,0],[x-R,b.maxY,-1],[x+R,b.maxY,0],[x+R,b.minY,-1]];
 }
 function edgeDist(fin,c){
   const[TL,TR,BR,BL]=fin;
@@ -189,7 +214,7 @@ function DXFWriter(){
   const g={
     line(arr,own,ly,a,b,byblock,lt){E(arr,own,'LINE',['8',ly,...(lt?['6',lt]:[]),...(byblock?['62','0']:[]),'100','AcDbLine','10',D(a[0]),'20',D(a[1]),'30','0','11',D(b[0]),'21',D(b[1]),'31','0']);},
     text(arr,own,ly,p,h,s,rot,ha,va,byblock){E(arr,own,'TEXT',['8',ly,...(byblock?['62','0']:[]),'100','AcDbText','10',D(p[0]),'20',D(p[1]),'30','0','40',D(h),'1',dxfEsc(s),'50',D(rot||0),'72',String(ha||0),'11',D(p[0]),'21',D(p[1]),'31','0','100','AcDbText','73',String(va||0)]);},
-    lwpoly(arr,own,ly,pts){E(arr,own,'LWPOLYLINE',['8',ly,'100','AcDbPolyline','90',String(pts.length),'70','1','43','0',...pts.flatMap(q=>['10',D(q[0]),'20',D(q[1]),...(q[2]?['42',D(q[2])]:[])])]);},
+    lwpoly(arr,own,ly,pts){E(arr,own,'LWPOLYLINE',['8',ly,'100','AcDbPolyline','90',String(pts.length),'70','1','43','0',...pts.flatMap(q=>['10',D(q[0]),'20',D(q[1])])]);},
     circle(arr,own,ly,p,r){E(arr,own,'CIRCLE',['8',ly,'100','AcDbCircle','10',D(p[0]),'20',D(p[1]),'30','0','40',D(r)]);}
   };
   const W={
@@ -278,8 +303,7 @@ function buildDXF(promo,pisos){
       const cf=cfgOf(promo,f),g=geom(f,cf.cuts);if(!g)return;any=true;
       const encs=(f.enchufes||[]).map(e=>({e,g:encGeom(e,cf)})).filter(q=>q.g);
       const R=cf.dia/2;
-      const cops=(f.copetes||[]).map((cp,j)=>{const q=copGeom(cp,g),off=-(q.A+250)*j;return{...q,pts:q.pts.map(t=>[t[0],t[1]+off])};});
-      const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(q=>q.g.pts.flatMap(t=>[[t[0]-R,t[1]-R],[t[0]+R,t[1]+R]])),...cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-200]))]);
+      const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(q=>q.g.pts.flatMap(t=>[[t[0]-R,t[1]-R],[t[0]+R,t[1]+R]]))]);
       const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200;
       const S=p=>[p[0]+dx,p[1]+dy];
       const meas=g.meas.map(S),fin=g.fin.map(S),o=S([0,0]),m=g.m;
@@ -301,7 +325,7 @@ function buildDXF(promo,pisos){
       cota(LY.gen,fin[0],fin[3],cen);cota(LY.gen,fin[1],fin[2],cen);
       // Enchufes
       encs.forEach(q=>{
-        if(q.g.pts.length>1)W.lwpoly(LY.enc,encSlot(q.g,R).map(t=>[...S(t),t[2]]));else W.circle(LY.enc,S(q.g.pts[0]),R);
+        q.g.pts.forEach(t=>W.circle(LY.enc,S(t),R));
         const ec=q.g.c,gb=bbox(q.g.pts);
         dimLine(LY.obra,S([0,ec[1]]),S(ec),HO);
         dimLine(LY.obra,S([ec[0],0]),S(ec),HO);
@@ -311,14 +335,6 @@ function buildDXF(promo,pisos){
         const yh=gb.minY-R-30,xv=gb.maxX+R+30;
         dimLine(LY.gen,S([xl,yh]),S([ec[0],yh]),HO);
         dimLine(LY.gen,S([xv,yb]),S([xv,ec[1]]),HO);
-      });
-      // Copetes (piezas aparte, debajo del frente)
-      cops.forEach((q,j)=>{
-        const pts=q.pts.map(S);
-        W.lwpoly(LY.ext,pts);
-        const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
-        cota(LY.gen,pts[3],pts[2],cc);cota(LY.gen,pts[0],pts[3],cc);
-        W.text(LY.txt,[pts[0][0]+20,pts[0][1]+20],30,'COPETE'+(cops.length>1?' '+(j+1):''),0,0,0);
       });
       x+=bb.w+400+700;
       rowH=Math.max(rowH,bb.h+400);
@@ -602,25 +618,16 @@ function modal({title,text,fields=[],buttons}){
   return new Promise(res=>{
     const box=$('#mbox');
     box.innerHTML=`<h3>${esc(title||'')}</h3>${text?`<p class="note" style="font-size:15px">${esc(text)}</p>`:''}`+
-      fields.map((f,i)=>`<div class="fld"><label>${esc(f.label||'')}</label>${f.sel?`<select class="in" data-i="${i}">${f.sel.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(f.value)?'selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input class="in" data-i="${i}" type="${f.type||'text'}" ${f.num?'inputmode="decimal"':''} value="${esc(f.value==null?'':f.value)}" placeholder="${esc(f.ph||'')}">`}</div>`).join('')+
+      fields.map((f,i)=>`<div class="fld"><label>${esc(f.label||'')}</label>${f.sel?`<select class="in" data-i="${i}">${f.sel.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(f.value)?'selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input class="in" data-i="${i}" type="text" ${f.num?'inputmode="decimal"':''} value="${esc(f.value==null?'':f.value)}" placeholder="${esc(f.ph||'')}">`}</div>`).join('')+
       `<div class="btns">${buttons.map((b,i)=>`<button class="btn ${b.pri?'pri':''} ${b.dang?'dang':''}" data-b="${i}">${esc(b.label)}</button>`).join('')}</div>`;
     $('#modal').hidden=false;
     const ins=[...box.querySelectorAll('input,select')];
-    const fi=box.querySelector('input');if(fi&&!fields.some(f=>f.sel))setTimeout(()=>{fi.focus();try{fi.select();}catch(e){}},50);
+    const fi=box.querySelector('input');if(fi&&!fields.some(f=>f.sel))setTimeout(()=>{fi.focus();fi.select();},50);
     const done=v=>{$('#modal').hidden=true;box.innerHTML='';res({v,values:ins.map(i=>i.value)});};
     box.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>done(buttons[+b.dataset.b].v));
     ins.forEach(i=>i.onkeydown=e=>{if(e.key==='Enter'){const p=buttons.find(b=>b.pri);done(p?p.v:'ok');}});
     $('#modal').onclick=e=>{if(e.target.id==='modal')done(null);};
   });
-}
-function hoy(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-function fFecha(s){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||'');return m?m[3]+'/'+m[2]+'/'+m[1]:'';}
-async function pisoForm(pi){
-  const pr=modal({title:pi?'Editar piso':'Añadir piso',fields:[{label:'Nombre del piso',value:pi?pi.title:'',ph:'p. ej. 1º A'},{label:'Fecha de medición',type:'date',value:(pi&&pi.fecha)||hoy()}],
-    buttons:[{label:'Cancelar',v:null},{label:pi?'Guardar':'Añadir',v:'ok',pri:true}]});
-  const fl=[...$('#mbox').querySelectorAll('.fld')];if(fl.length===2){const w=document.createElement('div');w.className='grid2';fl[0].before(w);w.append(fl[0],fl[1]);}
-  const r=await pr;if(!r.v)return null;const t=r.values[0].trim();if(!t){toast('Pon el nombre del piso');return null;}
-  return{title:t,fecha:r.values[1]||hoy()};
 }
 async function askText(title,label,value,ph){const r=await modal({title,fields:[{label,value,ph}]});return r.v?r.values[0].trim():null;}
 async function confirmDel(what){const r=await modal({title:'¿Borrar '+what+'?',text:'No se puede deshacer.',buttons:[{label:'Cancelar',v:null},{label:'Borrar',v:'ok',dang:true}]});return !!r.v;}
@@ -630,7 +637,7 @@ const P=()=>S.promos.find(p=>p.id===route.p);
 const PI=()=>{const p=P();return p&&p.pisos.find(x=>x.id===route.pi);};
 const F=()=>{const pi=PI();return pi&&pi.frentes.find(x=>x.id===route.f);};
 function filled(f){return KEYS.filter(k=>num(f.m[k])!=null).length;}
-function go(r){dictStop();if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='med';render();window.scrollTo(0,0);}
+function go(r){dictStop();route=r;mode='med';render();window.scrollTo(0,0);}
 
 function fileBtn(label,cls,kind){
   const acc=kind==='imp'?'.json,application/json':'image/*',cap=kind.startsWith('cam')?' capture="environment"':'';
@@ -677,19 +684,14 @@ function renderHome(app){
 document.addEventListener('change',e=>{if(e.target&&e.target.id==='incFotos'){incFotos=e.target.checked;try{localStorage.setItem('fc_incFotos',incFotos?'1':'0');}catch(_){}}});
 function renderPromo(app){
   const p=P();$('#ttl').textContent=p.title;
-  const loc=p.loc||{};
   app.innerHTML=`<div class="card"><div class="ttl"><b>${esc(p.title)}</b><button class="btn sm" data-act="renPromo">Renombrar</button></div></div>
-  <div class="card"><div style="font-weight:600;margin-bottom:8px">Ubicación de la obra</div>
-   <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
-   <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
-   <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div>
   <div class="card"><div style="font-weight:600;margin-bottom:8px">Descuentos sobre la medida (mm)</div>
    <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-cut="${k}" value="${esc(fmt(p.cuts[k]))}"></label>`).join('')}</div>
    <div style="font-weight:600;margin:12px 0 8px">Enchufes (mm)</div>
    <div class="grid2"><label class="note">Ø agujero<input class="in" inputmode="decimal" data-pset="dia" value="${esc(fmt(num(p.dia)||68))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-pset="sep" value="${esc(fmt(num(p.sep)||70))}"></label></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
-    return `<button class="item" data-act="openPiso" data-id="${pi.id}"><div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
+    return `<button class="item" data-act="openPiso" data-id="${pi.id}"><div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Sin pisos todavía.</div>`)+
   `<button class="btn pri full" data-act="newPiso">+ Añadir piso</button>
    <h2>Exportar</h2>
@@ -700,13 +702,12 @@ function renderPromo(app){
    <p class="note" style="margin:4px 2px 0">Lo mismo, más un DXF con todos los pisos y las fotos anotadas.</p>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPromo">Borrar promoción</button>`;
   app.querySelectorAll('[data-pset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0){p[i.dataset.pset]=v;Store.save(p);}});
-  const lt=$('#locTxt');if(lt)lt.onchange=()=>{p.loc={...(p.loc||{}),txt:lt.value.trim()};Store.save(p);};
   app.querySelectorAll('[data-cut]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null){p.cuts[i.dataset.cut]=v;Store.save(p);}});
 }
 
 function renderPiso(app){
   const p=P(),pi=PI();$('#ttl').textContent=pi.title;
-  app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
+  app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Renombrar</button></div></div>
   <h2>Frentes</h2>`+
   (pi.frentes.length?pi.frentes.map((f,i)=>{const n=filled(f);
     return `<button class="item" data-act="openFrente" data-id="${f.id}">${f.photo?`<img class="thumb" data-ph="${esc(JSON.stringify(f.photo))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}${f.cfg?' · <span style="color:var(--mut)">config. propia</span>':''}</div></div><span class="chev">›</span></button>`;}).join('')
@@ -743,15 +744,12 @@ function renderFrente(app){
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
   `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Las casillas del mismo color van enlazadas: lo que escribas en la marcada con ⇢ se copia a su pareja (pared arriba → pared abajo, techo y mueble izquierda → derecha). Luego corrige la pareja si es distinta.</div>
    <div class="row" style="margin-bottom:10px"><button class="btn sm pri" data-act="dictStart" style="flex:1">🎤 Dictar medidas</button><button class="btn sm" data-act="orderEdit">⚙ Orden</button>
-     <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label></div>
-   <div class="row" style="margin-bottom:4px"><button class="btn sm" id="lzBtn" data-act="lzCon" style="flex:1">📏 Conectar láser</button><button class="btn sm pri" id="lzMed" data-act="lzMed" hidden>Medir</button></div>
-   <div class="note" id="lzSt" style="margin-bottom:10px">${Laser.conectado()?'Láser conectado. Toca una casilla (o una cifra de la foto) para elegir dónde cae la siguiente medida.':''}</div>
+     <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="obra" ${dictUnit==='obra'?'selected':''}>m y cm</option><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label></div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div>
-   <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes y copetes</div>
-    <div class="note" style="margin-bottom:8px">Enchufes: distancias desde las líneas del láser hasta el eje (centro). Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm. Copetes: remate lateral, largo = pared en obra − 14 mm (12 grosor del frente + 2 holgura).</div>
+   <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes</div>
+    <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm.</div>
     ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
-    ${(f.copetes||[]).map((cp,i)=>`<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1} · Copete</div><div class="s">${esc(copDesc(cp))}</div></div><span class="chev">›</span></button>`).join('')}
-    <div class="grid2"><button class="btn" data-act="addEnc">+ Añadir enchufe</button><button class="btn" data-act="addCop">+ Añadir copete</button></div></div>
+    <button class="btn full" data-act="addEnc">+ Añadir enchufe</button></div>
    <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de descuentos</div>
     <label class="chk"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Igual que la promoción</label>
     ${f.cfg?`<div class="note" style="margin:-2px 2px 8px">Valores propios de este frente (mm):</div>
@@ -764,7 +762,7 @@ function renderFrente(app){
    <button class="btn full" style="margin-top:8px" data-act="copyDxf">Copiar DXF (texto)</button>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delFrente">Borrar frente</button>`;
   const du=$('#dictUnit');if(du)du.onchange=()=>{dictUnit=du.value;LS.set('fc_du',dictUnit);dictBanner();};
-  app.querySelectorAll('input[data-k]').forEach(i=>i.onfocus=()=>{if(Dict){const j=DORDER.indexOf(i.dataset.k);if(j>=0){Dict.i=j;dictBanner();}}else if(Laser.conectado()&&DORDER.includes(i.dataset.k)){LZ.k=i.dataset.k;lzMark();}});
+  app.querySelectorAll('input[data-k]').forEach(i=>i.onfocus=()=>{if(Dict){const j=DORDER.indexOf(i.dataset.k);if(j>=0){Dict.i=j;dictBanner();}}});
   app.querySelectorAll('input[data-k]').forEach(i=>i.oninput=()=>{
     const v=i.value.trim(),k=i.dataset.k;f.m[k]=v===''?null:v;i.classList.toggle('miss',num(v)==null);
     if(MIRROR[k])setMeasureInput(MIRROR[k],v);
@@ -780,7 +778,6 @@ function renderFrente(app){
   renderPrev();
   if(Dict)dictBanner();
   if(f.photo)setupCanvas();
-  lzUI();
 }
 
 function renderPrev(){
@@ -788,8 +785,7 @@ function renderPrev(){
   const cn=$('#cutnote');if(cn)cn.textContent=`Descuentos: arriba ${fmt(cf.cuts.t)}, abajo ${fmt(cf.cuts.b)}, izq ${fmt(cf.cuts.l)}, dcha ${fmt(cf.cuts.r)} mm`+(f.cfg?' (propios de este frente)':'');
   if(!g){el.innerHTML=`<div class="empty">Faltan ${8-filled(f)} medida${8-filled(f)==1?'':'s'} para dibujar la pieza.</div>`;return;}
   const R=cf.dia/2,encs=(f.enchufes||[]).map((e,i)=>({i,e,g:encGeom(e,cf)})).filter(x=>x.g);
-  const cops=(f.copetes||[]).map((cp,j)=>{const q=copGeom(cp,g),off=-(q.A+250)*j;return{...q,j,pts:q.pts.map(t=>[t[0],t[1]+off])};});
-  const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(x=>x.g.pts),...cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-120]))]),sz=Math.max(bb.w,bb.h),pad=sz*0.12,fs=sz/18;
+  const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(x=>x.g.pts)]),sz=Math.max(bb.w,bb.h),pad=sz*0.12,fs=sz/18;
   const out=encs.filter(x=>x.g.pts.some(q=>!inPoly(q,g.fin)));
   const pt=a=>a.map(q=>`${q[0]},${-q[1]}`).join(' ');
   const d=dims(g.fin),fin=g.fin,cen=[(fin[0][0]+fin[2][0])/2,(fin[0][1]+fin[2][1])/2];
@@ -801,11 +797,13 @@ function renderPrev(){
    <polygon points="${pt(g.meas)}" fill="none" stroke="#9ca3af" stroke-dasharray="${fs/2} ${fs/3}" vector-effect="non-scaling-stroke"/>
    <polygon points="${pt(g.fin)}" fill="#fed7aa" fill-opacity=".55" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>
    ${lab(fin[0],fin[1],d.top)}${lab(fin[3],fin[2],d.bottom)}${lab(fin[0],fin[3],d.left)}${lab(fin[1],fin[2],d.right)}
-   ${encs.map(x=>(x.g.pts.length>1?(()=>{const b=bbox(x.g.pts);return `<rect x="${b.minX-R}" y="${-b.maxY-R}" width="${b.w+2*R}" height="${b.h+2*R}" rx="${R}" ry="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`;})():`<circle cx="${x.g.pts[0][0]}" cy="${-x.g.pts[0][1]}" r="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`)+`<text x="${x.g.c[0]}" y="${-(x.g.c[1]+R*(x.e.ori==='v'?(+x.e.n||1):1)+fs*0.4)}" font-size="${fs*0.8}" text-anchor="middle" fill="#2563eb" font-weight="700">E${x.i+1}</text>`).join('')}
-   ${cops.map(q=>`<polygon points="${pt(q.pts)}" fill="#bae6fd" fill-opacity=".7" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/><text x="${(q.pts[0][0]+q.pts[1][0])/2}" y="${-q.pts[2][1]+fs*0.9}" font-size="${fs*0.8}" text-anchor="middle" dominant-baseline="middle" fill="#075985" font-weight="700">C${q.j+1} · ${fmt(q.L)} × ${fmt(q.A)}</text>`).join('')}</svg>
+   ${encs.map(x=>x.g.pts.map(q=>`<circle cx="${q[0]}" cy="${-q[1]}" r="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`).join('')+`<text x="${x.g.c[0]}" y="${-(x.g.c[1]+R*(x.e.ori==='v'?(+x.e.n||1):1)+fs*0.4)}" font-size="${fs*0.8}" text-anchor="middle" fill="#2563eb" font-weight="700">E${x.i+1}</text>`).join('')}</svg>
    ${out.length?`<div class="warn" style="margin-top:8px">⚠ ${out.map(x=>'E'+(x.i+1)).join(', ')} se sale de la pieza. Revisa las medidas.</div>`:''}
-   <table class="dims"><tr><td>Ancho máximo × alto máximo</td><td>${fmt(bbox(fin).w)} × ${fmt(bbox(fin).h)}</td></tr>
-   ${cops.map(q=>`<tr><td>Copete C${q.j+1}${q.falta?' (falta la medida de pared, dibujado a 600)':''}</td><td>${fmt(q.L)} × ${fmt(q.A)}</td></tr>`).join('')}</table>`;
+   <table class="dims"><tr><td>Lado de arriba</td><td>${fmt(d.top)} mm</td></tr><tr><td>Lado de abajo</td><td>${fmt(d.bottom)} mm</td></tr>
+   <tr><td>Altura izquierda</td><td>${fmt(d.left)} mm</td></tr><tr><td>Altura derecha</td><td>${fmt(d.right)} mm</td></tr>
+   <tr><td>Diagonal ↘ (arriba izq → abajo dcha)</td><td>${fmt(d.d1)} mm</td></tr><tr><td>Diagonal ↗ (abajo izq → arriba dcha)</td><td>${fmt(d.d2)} mm</td></tr>
+   <tr><td>Ancho máximo × alto máximo</td><td>${fmt(bbox(fin).w)} × ${fmt(bbox(fin).h)}</td></tr>
+   ${encs.map(x=>{const ed=edgeDist(g.fin,x.g.c);return `<tr><td>E${x.i+1} eje: desde borde izq / desde abajo</td><td>${fmt(ed.izq)} / ${fmt(ed.abajo)}</td></tr>`;}).join('')}</table>`;
 }
 
 // ---------- Foto anotada ----------
@@ -835,7 +833,7 @@ function drawAnnot(ctx,img,W,H,f,collect){
     const r={k,x:cx-bw/2,y:cy-bh/2,w:bw,h:bh};
     ctx.fillStyle=v==null?'#ea580c':'rgba(17,24,39,.9)';rr(ctx,r.x,r.y,r.w,r.h,8*s);ctx.fill();
     ctx.strokeStyle=PAIRC[k];ctx.lineWidth=3.5*s;ctx.stroke();
-    if(collect&&typeof Dict!=='undefined'&&((Dict&&DORDER[Dict.i]===k)||(!Dict&&typeof Laser!=='undefined'&&Laser.conectado()&&route.v==='frente'&&lzTarget()===k))){ctx.save();ctx.strokeStyle='#f59e0b';ctx.lineWidth=6*s;rr(ctx,r.x-7*s,r.y-7*s,r.w+14*s,r.h+14*s,12*s);ctx.stroke();ctx.restore();}
+    if(collect&&typeof Dict!=='undefined'&&Dict&&DORDER[Dict.i]===k){ctx.save();ctx.strokeStyle='#f59e0b';ctx.lineWidth=6*s;rr(ctx,r.x-7*s,r.y-7*s,r.w+14*s,r.h+14*s,12*s);ctx.stroke();ctx.restore();}
     ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,cx,cy+1*s);
     out.push(r);
   }
@@ -879,7 +877,6 @@ async function setupCanvas(){
     }
     const h=hits.slice().reverse().find(r=>pt[0]>=r.x&&pt[0]<=r.x+r.w&&pt[1]>=r.y&&pt[1]<=r.y+r.h);
     if(mode==='med'&&Dict&&h&&h.k){const j=DORDER.indexOf(h.k);if(j>=0){Dict.i=j;Dict.heard='';dictBanner();}return;}
-    if(mode==='med'&&Laser.conectado()&&h&&h.k&&DORDER.includes(h.k)){LZ.k=h.k;lzMark();toast('Siguiente medida: '+KLAB[h.k]);return;}
     if(mode==='med'){if(h&&h.k)editMeasure(h.k);else if(h&&h.note!=null)editNote(h.note);}
     else if(mode==='nota'){if(h&&h.note!=null)editNote(h.note);else addNote(pt[0]/cv.width,pt[1]/cv.height);}
   };
@@ -953,7 +950,14 @@ function orderEditor(){
   $('#modal').onclick=e=>{if(e.target.id==='modal')close();};
   draw();$('#modal').hidden=false;
 }
-let dictUnit=LS.get('fc_du','cm'),Dict=null;
+let dictUnit=LS.get('fc_du','obra'),Dict=null;
+const UNITTXT={obra:'metros y centímetros (ej.: «uno cincuenta y siete con cinco»)',cm:'cm',mm:'mm'};
+function parseMeasure(t){
+  const c=parseSpoken(t);if(c&&c.cmd)return c;
+  if(dictUnit==='obra')return parseObra(t);
+  if(c&&c.num!=null)return{mm:c.num*(dictUnit==='cm'?10:1)};
+  return null;
+}
 function dictStart(){
   if(!SRec){toast(inClaude?'Para dictar usa la versión de GitHub (Safari en iPad o Chrome en Android).':'Este navegador no permite dictar. Usa Safari en iPad o Chrome en Android.');return;}
   if(Dict)return;
@@ -968,7 +972,7 @@ function dictListen(){
       for(let j=e.resultIndex;j<e.results.length;j++){
         const res=e.results[j];
         if(!res.isFinal){Dict.heard=res[0].transcript;dictBanner();continue;}
-        let done=false;for(let a=0;a<res.length&&!done;a++){const q=parseSpoken(res[a].transcript);if(q){dictApply(q,res[a].transcript);done=true;}}
+        let done=false;for(let a=0;a<res.length&&!done;a++){const q=parseMeasure(res[a].transcript);if(q){dictApply(q,res[a].transcript);done=true;}}
         if(!done){Dict.heard='No he entendido: «'+res[0].transcript+'»';dictBanner();}
       }
     };
@@ -982,7 +986,7 @@ function dictApply(q,raw){
   if(q.cmd==='stop')return dictStop();
   if(q.cmd==='back'){Dict.i=Math.max(0,Dict.i-1);Dict.heard='';return dictBanner();}
   if(q.cmd==='next'){Dict.heard='';return dictNext();}
-  const k=DORDER[Dict.i],v=Math.round(q.num*(dictUnit==='cm'?10:1)*10)/10,sv=String(v);
+  const k=DORDER[Dict.i],v=Math.round(q.mm*10)/10,sv=String(v);
   setMeasureInput(k,sv);if(MIRROR[k])setMeasureInput(MIRROR[k],sv);
   Store.save(P());drawCanvas();renderPrev();
   try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}
@@ -997,7 +1001,6 @@ function dictStop(){
   if(!Dict)return;const r=Dict.rec;Dict=null;try{r&&r.stop();}catch(e){}
   document.querySelectorAll('input.dicting').forEach(x=>x.classList.remove('dicting'));
   const b=$('#dictbar');b.hidden=true;b.innerHTML='';drawCanvas();document.body.style.paddingBottom='';
-  if(typeof lzMark==='function')lzMark();
 }
 function dictBanner(){
   const b=$('#dictbar');drawCanvas();if(!Dict){b.hidden=true;document.body.style.paddingBottom='';return;}
@@ -1006,7 +1009,7 @@ function dictBanner(){
   document.querySelectorAll('input[data-k]').forEach(x=>x.classList.toggle('dicting',x.dataset.k===k));
   b.hidden=false;
   b.innerHTML=`<div class="lab">${Dict.paused?'⏸':'<span class="mic"></span>'}<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${PAIRC[k]}"></span>${esc(KLAB[k])}</div>
-    <div class="note" style="color:#d1d5db">Di la medida en <b>${dictUnit}</b> · ${Dict.i+1} de ${DORDER.length} · «igual» salta, «atrás» vuelve, «parar» termina</div>
+    <div class="note" style="color:#d1d5db">Di la medida en <b>${esc(UNITTXT[dictUnit])}</b> · ${Dict.i+1} de ${DORDER.length} · «igual» salta, «atrás» vuelve, «parar» termina</div>
     <div class="heard">${esc(Dict.heard||'')}</div>
     <div class="btns"><button class="btn sm" id="dBack">← Atrás</button><button class="btn sm" id="dNext">Saltar →</button>${Dict.paused?'<button class="btn sm pri" id="dGo">🎤 Seguir</button>':''}<button class="btn sm dang" id="dStop">■ Parar</button></div>`;
   $('#dBack').onclick=()=>dictApply({cmd:'back'});$('#dNext').onclick=()=>dictApply({cmd:'next'});$('#dStop').onclick=dictStop;
@@ -1026,24 +1029,23 @@ const ESTEPS=[
   {i:4,t:'Tipo',h:'di «sencillo», «doble», «triple» o «cuádruple»',w:t=>/(sencill|\buno\b|^1$)/.test(t)?'1':/(dobl|\bdos\b|^2$)/.test(t)?'2':/(tripl|\btres\b|^3$)/.test(t)?'3':/(cuadrupl|\bcuatro\b|^4$)/.test(t)?'4':null},
   {i:5,t:'Disposición',h:'di «horizontal» o «vertical»',w:t=>/horiz/.test(t)?'h':/vert/.test(t)?'v':null}
 ];
-function encDictUI(lbl='enchufe',steps=ESTEPS){
-  encDictUI.cur={lbl,steps};
+function encDictUI(){
   const box=$('#mbox'),h3=box.querySelector('h3');if(!h3)return;
-  h3.insertAdjacentHTML('afterend',`<div id="edBar" style="margin:-4px 0 10px"><button class="btn sm pri" id="edGo">🎤 Dictar ${lbl} (${dictUnit})</button><div class="note" id="edMsg" style="margin-top:6px"></div></div>`);
+  h3.insertAdjacentHTML('afterend',`<div id="edBar" style="margin:-4px 0 10px"><button class="btn sm pri" id="edGo">🎤 Dictar enchufe</button><div class="note" id="edMsg" style="margin-top:6px"></div></div>`);
   $('#edGo').onclick=()=>{if(ED)encDictStop();else encDictStart();};
 }
 function encDictStart(){
   if(!SRec){toast(inClaude?'Para dictar usa la versión de GitHub.':'Este navegador no permite dictar.');return;}
   const els=[...$('#mbox').querySelectorAll('[data-i]')];
-  ED={els,s:0,rec:null,steps:(encDictUI.cur||{}).steps||ESTEPS};encDictListen();encDictShow('');
+  ED={els,s:0,rec:null};encDictListen();encDictShow('');
 }
 function encDictStop(){if(!ED)return;const r=ED.rec;ED=null;try{r&&r.stop();}catch(e){}
-  document.querySelectorAll('#mbox .dicting').forEach(x=>x.classList.remove('dicting'));const g=$('#edGo');if(g)g.textContent='🎤 Dictar '+((encDictUI.cur||{}).lbl||'enchufe')+' ('+dictUnit+')';}
+  document.querySelectorAll('#mbox .dicting').forEach(x=>x.classList.remove('dicting'));const g=$('#edGo');if(g)g.textContent='🎤 Dictar enchufe';}
 function encDictShow(heard){
-  if(!ED)return;const st=ED.steps[ED.s],m=$('#edMsg'),g=$('#edGo');if(!m){encDictStop();return;}
+  if(!ED)return;const st=ESTEPS[ED.s],m=$('#edMsg'),g=$('#edGo');if(!m){encDictStop();return;}
   ED.els.forEach((x,j)=>x.classList.toggle('dicting',st&&j===st.i));
   if(g)g.textContent='■ Parar dictado';
-  m.innerHTML=st?`<b>${ED.s+1}. ${esc(st.t)}</b> — ${esc(st.h||'di la medida en '+dictUnit)}<br>${esc(heard||'')}`:`<b>Listo.</b> Di «guardar» o pulsa el botón. ${esc(heard||'')}`;
+  m.innerHTML=st?`<b>${ED.s+1}. ${esc(st.t)}</b> — ${esc(st.h||'di la medida en '+UNITTXT[dictUnit])}<br>${esc(heard||'')}`:`<b>Listo.</b> Di «guardar» o pulsa el botón. ${esc(heard||'')}`;
 }
 function encDictListen(){
   if(!ED)return;
@@ -1065,54 +1067,22 @@ function encDictApply(raw){
   if(!ED)return true;
   const t=String(raw).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
   if(/\b(guardar|guarda|anadir|anade|aceptar|listo)\b/.test(t)){const b=[...$('#mbox').querySelectorAll('.btn.pri')].find(x=>x.id!=='edGo');encDictStop();if(b)b.click();return true;}
-  const st=ED.steps[ED.s];
-  const q=parseSpoken(t);
+  const st=ESTEPS[ED.s];
+  const q=parseMeasure(t);
   if(q&&q.cmd==='stop'){encDictStop();return true;}
   if(q&&q.cmd==='back'){ED.s=Math.max(0,ED.s-1);encDictShow('');return true;}
   if(!st)return false;
   if(q&&q.cmd==='next'){encDictNext();return true;}
   const el=ED.els[st.i];
-  if(st.num){if(!q||q.num==null)return false;el.value=String(Math.round(q.num*(dictUnit==='cm'?10:1)*10)/10);}
+  if(st.num){if(!q||q.mm==null)return false;el.value=String(Math.round(q.mm*10)/10);}
   else{const v=st.w(t);if(v==null)return false;el.value=v;}
   try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}
   encDictNext();return true;
 }
 function encDictNext(){
   if(!ED)return;ED.s++;
-  if(ED.steps===ESTEPS&&ED.s===5&&ED.els[4].value==='1')ED.s++; // sencillo: no hay disposición
+  if(ED.s===5&&ED.els[4].value==='1')ED.s++; // sencillo: no hay disposición
   encDictShow('');
-}
-const CSTEPS=[
-  {i:0,t:'Lado del copete',h:'di «izquierda», «derecha» o «ninguno»',w:t=>/izq/.test(t)?'izq':/(derech|dcha)/.test(t)?'dcha':/(ningun|nada|sin|\bno\b)/.test(t)?'no':null},
-  {i:1,t:'Descuento (grosor frente + holgura)',num:true},
-  {i:2,t:'Altura del copete',num:true},
-  {i:3,t:'Medida de la pared en obra',num:true}
-];
-async function copForm(i){
-  const p=P(),f=F();f.copetes=f.copetes||[];
-  const c=i==null?{lado:(f.copetes.some(x=>x.lado==='izq')?'dcha':'izq'),desc:'14',alt:'45',largo:''}:f.copetes[i];
-  const pr=modal({title:i==null?'Añadir copete':'Copete C'+(i+1),fields:[
-    {label:'Lado del copete',sel:[['izq','Izquierda'],['dcha','Derecha'],['no','Ninguno']],value:c.lado},
-    {label:'Descuento (mm)',value:c.desc,num:true,ph:'14'},
-    {label:'Altura (mm)',value:c.alt,num:true,ph:'45'},
-    {label:'Medida de la pared en obra (mm) — el copete medirá esto menos el descuento',value:c.largo,num:true,ph:'p. ej. 620'}],
-    buttons:i==null?[{label:'Cancelar',v:null},{label:'Añadir',v:'ok',pri:true}]:[{label:'Borrar',v:'del',dang:true},{label:'Cancelar',v:null},{label:'Guardar',v:'ok',pri:true}]});
-  // Descuento y altura en la misma línea
-  {const fl=[...$('#mbox').querySelectorAll('.fld')];if(fl[1]&&fl[2]){const w=document.createElement('div');w.className='grid2';fl[1].before(w);w.append(fl[1],fl[2]);
-    w.insertAdjacentHTML('afterend','<div class="note" style="margin:-4px 0 10px">Descuento: 12 de grosor del frente + 2 de holgura del cemento cola.</div>');}}
-  encDictUI('copete',CSTEPS);
-  const r=await pr;encDictStop();
-  if(!r.v)return;
-  if(r.v==='del')f.copetes.splice(i,1);
-  else{
-    const[lado,desc,alt,largo]=r.values.map(x=>String(x).trim());
-    const d=num(desc),a=num(alt);
-    if(alt!==''&&!(a>0)){toast('Altura no válida');return;}
-    if(!(num(largo)>0))toast('Falta la medida de la pared: el copete se dibuja a 600 hasta que la pongas');
-    const nc={lado,desc:d==null?'14':String(Math.abs(d)),alt:a>0?String(a):'45',largo:num(largo)>0?String(num(largo)):''};
-    if(i==null)f.copetes.push(nc);else f.copetes[i]=nc;
-  }
-  Store.save(p);render();
 }
 async function encForm(i){
   const p=P(),f=F();f.enchufes=f.enchufes||[];
@@ -1199,239 +1169,16 @@ async function photoFiles(pi,prefix){
 }
 
 // ---------- Acciones ----------
-
-// ---------- Láser Bluetooth (Bosch GLM / Leica DISTO) ----------
-/*
- * laser.js — Conexión de medidores láser por Bluetooth (Web Bluetooth)
- * Soporta: Bosch GLM 50 C (y otros GLM "C") y Leica DISTO con Bluetooth Smart.
- * Funciona en Chrome Android / Chrome-Edge escritorio y en Bluefy (iPad/iPhone).
- *
- * Uso:
- *   Laser.onMedida = (mm) => { ... };      // medida en milímetros
- *   Laser.onEstado = (texto) => { ... };   // mensajes de estado
- *   Laser.onRaw    = (hex) => { ... };     // datos crudos (diagnóstico)
- *   Laser.conectar();                      // llamar desde un clic de botón
- *   Laser.desconectar();
- */
-(function (global) {
-  'use strict';
-
-  // Bosch: los GLM nuevos usan 02a6c0d0…; los GLM 50 C antiguos usan 00005301…
-  const BOSCH_SERVICES = [
-    '02a6c0d0-0451-4000-b000-fb3210111989',
-    '00005301-0000-0041-5253-534f46540000'
-  ];
-  const BOSCH_MEDIR = new Uint8Array([0xC0, 0x56, 0x01, 0x00, 0x1E]);
-  // Activa el envío automático de cada medida al pulsar el botón del láser
-  const BOSCH_AUTOSYNC = new Uint8Array([0xC0, 0x55, 0x02, 0x01, 0x00, 0x1A]);
-
-  const LEICA_SERVICE = '3ab10100-f831-4395-b29d-570977d5bf94';
-  const LEICA_DIST    = '3ab10101-f831-4395-b29d-570977d5bf94';
-
-  const Laser = {
-    onMedida: null,
-    onEstado: null,
-    onRaw: null,
-    onDiag: null,
-    device: null,
-    marca: null,
-    _ultima: { mm: null, t: 0 },
-
-    soportado() {
-      return !!(navigator.bluetooth && navigator.bluetooth.requestDevice);
-    },
-
-    _estado(t) { if (this.onEstado) this.onEstado(t); },
-    _diag(t) { if (this.onDiag) this.onDiag(t); else this._estado(t); },
-    conectado() { return !!(this.device && this.device.gatt && this.device.gatt.connected && this.marca); },
-
-    _hex(dv) {
-      const a = [];
-      for (let i = 0; i < dv.byteLength; i++) a.push(dv.getUint8(i).toString(16).padStart(2, '0'));
-      return a.join(' ');
-    },
-
-    _emitir(metros) {
-      if (!isFinite(metros) || metros <= 0.01 || metros > 250) return;
-      const mm = Math.round(metros * 1000);
-      // Evita duplicados (algunos láser repiten el paquete)
-      const ahora = Date.now();
-      if (mm === this._ultima.mm && ahora - this._ultima.t < 700) return;
-      this._ultima = { mm, t: ahora };
-      if (this.onMedida) this.onMedida(mm);
-    },
-
-    async conectar() {
-      if (!this.soportado()) {
-        this._estado('Este navegador no tiene Bluetooth web. En Android usa Chrome; en iPad usa Bluefy.');
-        return false;
-      }
-      try {
-        this._estado('Buscando láser…');
-        const device = await navigator.bluetooth.requestDevice({
-          // Muestra todos los dispositivos BLE cercanos: algunos láser no anuncian su servicio ni un nombre fijo
-          acceptAllDevices: true,
-          optionalServices: [...BOSCH_SERVICES, LEICA_SERVICE]
-        });
-        this.device = device;
-        device.addEventListener('gattserverdisconnected', () => {
-          this.marca = null; this._chBosch = null;
-          this._estado('Láser desconectado');
-        });
-        this._estado('Conectando a ' + (device.name || 'láser') + '…');
-        const server = await device.gatt.connect();
-
-        this._diag('Conectado a "' + (device.name || 'sin nombre') + '". Buscando servicios…');
-        try {
-          const lista = await server.getPrimaryServices();
-          this._diag('Servicios visibles: ' + (lista.length ? lista.map(s => s.uuid).join(', ') : 'ninguno'));
-        } catch (e) { this._diag('No se pudieron listar servicios: ' + e.message); }
-
-        // ¿Bosch?
-        for (const uuid of BOSCH_SERVICES) {
-          try {
-            const srv = await server.getPrimaryService(uuid);
-            this._diag('Servicio Bosch encontrado: ' + uuid);
-            const chars = await srv.getCharacteristics();
-            const ch = chars.find(c => c.properties.indicate || c.properties.notify);
-            if (!ch) { this._diag('Bosch: sin característica de avisos'); continue; }
-            const p = ch.properties;
-            this._diag('Característica ' + ch.uuid + ' indicate=' + p.indicate + ' notify=' + p.notify + ' write=' + p.write);
-            ch.addEventListener('characteristicvaluechanged', (e) => this._bosch(e.target.value));
-            await ch.startNotifications();
-            this._chBosch = ch;
-            try { await this._escribir(BOSCH_AUTOSYNC); }
-            catch (e) { this._diag('Aviso al activar envío automático: ' + e.message); }
-            this.marca = 'Bosch';
-            this._estado('Conectado: ' + (device.name || 'Bosch GLM') + '. Pulsa el botón de medir del láser.');
-            return true;
-          } catch (e) { this._diag('Bosch ' + uuid.slice(0, 8) + ': ' + e.message); }
-        }
-
-        // ¿Leica?
-        try {
-          const srv = await server.getPrimaryService(LEICA_SERVICE);
-          const ch = await srv.getCharacteristic(LEICA_DIST);
-          ch.addEventListener('characteristicvaluechanged', (e) => {
-            const dv = e.target.value;
-            if (this.onRaw) this.onRaw(this._hex(dv));
-            if (dv.byteLength >= 4) this._emitir(dv.getFloat32(0, true));
-          });
-          await ch.startNotifications();
-          this.marca = 'Leica';
-          this._estado('Conectado: ' + (device.name || 'Leica DISTO') + '. Pulsa el botón de medir del láser.');
-          return true;
-        } catch (e) { this._diag('Leica: ' + e.message); }
-
-        this._estado('Conectado, pero no reconozco el modelo del láser.');
-        return false;
-      } catch (err) {
-        if (err && err.name === 'NotFoundError') this._estado('No se eligió ningún láser.');
-        else this._estado('Error: ' + (err && err.message ? err.message : err));
-        return false;
-      }
-    },
-
-    _bosch(dv) {
-      if (this.onRaw) this.onRaw(this._hex(dv));
-      const n = dv.byteLength;
-      // Formato habitual: C0 55 10 06 ... con la distancia (float32, metros) en el byte 7
-      if (n >= 11 && dv.getUint8(0) === 0xC0 && dv.getUint8(1) === 0x55 && dv.getUint8(2) === 0x10) {
-        const m = dv.getFloat32(7, true);
-        if (m > 0.01 && m < 250) { this._emitir(m); return; }
-      }
-      // Respuesta a otras órdenes (C0 55 02 …, 00 00 …): no es una medida
-    },
-
-    async _escribir(bytes) {
-      const ch = this._chBosch;
-      if (!ch) return;
-      if (ch.properties.write) await ch.writeValueWithResponse(bytes);
-      else await ch.writeValueWithoutResponse(bytes);
-    },
-
-    // Dispara una medida desde la app (solo Bosch)
-    async medir() {
-      if (!this._chBosch) { this._estado('Primero conecta un láser Bosch'); return; }
-      try { await this._escribir(BOSCH_MEDIR); this._estado('Orden de medir enviada'); }
-      catch (e) { this._estado('Error al medir: ' + e.message); }
-    },
-
-    desconectar() {
-      if (this.device && this.device.gatt.connected) this.device.gatt.disconnect();
-    }
-  };
-
-  global.Laser = Laser;
-})(window);
-
-const LZ={k:null};               // casilla que recibirá la próxima medida del láser
-function lzTarget(){
-  const f=F();if(!f)return null;
-  if(Dict)return DORDER[Dict.i];
-  if(!LZ.k||!DORDER.includes(LZ.k)){LZ.k=DORDER.find(k=>num(f.m[k])==null)||DORDER[0];}
-  return LZ.k;
-}
-function lzMark(){
-  if(Dict||route.v!=='frente')return;
-  const k=Laser.conectado()?lzTarget():null;
-  document.querySelectorAll('input[data-k]').forEach(x=>x.classList.toggle('dicting',x.dataset.k===k));
-  drawCanvas();
-}
-function lzUI(){
-  const b=$('#lzBtn'),m=$('#lzMed'),on=Laser.conectado();
-  if(b){b.textContent=on?'📏 Láser conectado':'📏 Conectar láser';b.classList.toggle('on',on);}
-  if(m)m.hidden=!(on&&Laser.marca==='Bosch');
-  lzMark();
-}
-Laser.onEstado=t=>{const e=$('#lzSt');if(e)e.textContent=t;if(/desconectado|Error|no reconozco/i.test(t))toast(t);lzUI();};
-Laser.onDiag=t=>console.log('[láser]',t);
-Laser.onMedida=mm=>{
-  const sv=String(mm);
-  try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}
-  // Si hay una casilla de texto activa fuera de las 8 medidas (enchufe, ventana de medida…), la medida va ahí
-  const ae=document.activeElement;
-  if(ae&&ae.tagName==='INPUT'&&!ae.dataset.k&&(ae.inputMode==='decimal'||ae.closest('#mbox'))&&ae.type!=='checkbox'){
-    ae.value=sv;ae.dispatchEvent(new Event('input',{bubbles:true}));toast('Láser: '+sv+' mm');return;
-  }
-  if(route.v!=='frente'||!F()){toast('Láser: '+sv+' mm (abre un frente para guardarla)');return;}
-  if(Dict){dictApply({num:dictUnit==='cm'?mm/10:mm},sv);return;}
-  const k=lzTarget(),p=P(),f=F();
-  setMeasureInput(k,sv);if(MIRROR[k])setMeasureInput(MIRROR[k],sv);
-  Store.save(p);renderPrev();
-  const i=DORDER.indexOf(k);
-  toast('✓ '+KLAB[k]+': '+sv+' mm');
-  if(i>=0&&i<DORDER.length-1)LZ.k=DORDER[i+1];else{LZ.k=DORDER[0];toast('Medidas del frente completas');}
-  lzMark();
-};
 const A={
-  locSave(){
-    const p=P();if(!navigator.geolocation){toast('Este dispositivo no da la posición');return;}
-    const g=$('#locGps');if(g)g.textContent='Buscando posición…';
-    navigator.geolocation.getCurrentPosition(pos=>{
-      const c=pos.coords;p.loc={...(p.loc||{}),lat:c.latitude,lng:c.longitude,acc:c.accuracy};Store.save(p);
-      toast('Posición de la obra guardada');if(route.v==='promo')render();
-    },err=>{toast(err.code===1?'Sin permiso para la ubicación':'No se pudo obtener la posición');if(route.v==='promo')render();},{enableHighAccuracy:true,timeout:20000,maximumAge:0});
-  },
-  locNav(){
-    const p=P(),l=p.loc||{},lt=$('#locTxt'),txt=(lt&&lt.value.trim())||l.txt||'';
-    const dest=l.lat!=null?l.lat+','+l.lng:txt;
-    if(!dest){toast('Guarda la posición o escribe la dirección de la obra');return;}
-    window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest),'_blank');
-  },
-  addCop(){copForm(null);},
-  editCop(d){copForm(+d.i);},
-  lzCon(){if(!Laser.soportado()){toast(/iPad|iPhone|Macintosh/.test(navigator.userAgent)?'En iPad abre la app en el navegador Bluefy para usar el láser.':'Este navegador no tiene Bluetooth. Usa Chrome.');return;}if(Laser.conectado()){Laser.desconectar();return;}Laser.conectar();},
-  lzMed(){Laser.medir();},
   async newPromo(){const t=await askText('Nueva promoción','Título de la promoción','','p. ej. Residencial Los Olmos');if(!t)return;
     const p={id:'p_'+uid(),title:t,cuts:{t:2,b:12,l:2,r:2},dia:68,sep:70,pisos:[],updated:Date.now()};S.promos.push(p);Store.save(p);go({v:'promo',p:p.id});},
   openPromo(d){go({v:'promo',p:d.id});},
   async renPromo(){const p=P(),t=await askText('Renombrar promoción','Título',p.title);if(t){p.title=t;Store.save(p);render();}},
   async delPromo(){const p=P();if(!await confirmDel('la promoción "'+p.title+'"'))return;S.promos=S.promos.filter(x=>x!==p);await Store.remove(p.id);go({v:'home'});},
-  async newPiso(){const p=P(),r=await pisoForm(null);if(!r)return;
-    const pi={id:uid(),title:r.title,fecha:r.fecha,frentes:[]};p.pisos.push(pi);Store.save(p);go({v:'piso',p:p.id,pi:pi.id});},
+  async newPiso(){const p=P(),t=await askText('Añadir piso','Nombre del piso','','p. ej. 1º A');if(!t)return;
+    const pi={id:uid(),title:t,frentes:[]};p.pisos.push(pi);Store.save(p);go({v:'piso',p:p.id,pi:pi.id});},
   openPiso(d){go({v:'piso',p:route.p,pi:d.id});},
-  async renPiso(){const pi=PI(),r=await pisoForm(pi);if(r){pi.title=r.title;pi.fecha=r.fecha;Store.save(P());render();}},
+  async renPiso(){const pi=PI(),t=await askText('Renombrar piso','Nombre',pi.title);if(t){pi.title=t;Store.save(P());render();}},
   async delPiso(){const p=P(),pi=PI();if(!await confirmDel('el piso "'+pi.title+'"'))return;p.pisos=p.pisos.filter(x=>x!==pi);Store.save(p);go({v:'promo',p:p.id});},
   addCam(){pickPhoto('#fCam',null);},addGal(){pickPhoto('#fGal',null);},
   addNoPhoto(){newFrente(null);},
