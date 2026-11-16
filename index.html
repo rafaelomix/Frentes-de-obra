@@ -71,6 +71,7 @@ table.dims td:last-child{text-align:right;font-weight:700;font-variant-numeric:t
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30;max-width:90%}
 #toast.show{opacity:1}
 .hidefile{display:none}
+.ordn{flex:none;width:22px;height:22px;border-radius:50%;background:#e5e7eb;color:#374151;font:700 12px/22px system-ui,sans-serif;text-align:center}
 #dictbar{position:fixed;left:0;right:0;bottom:0;z-index:15;background:#111827;color:#fff;padding:12px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.25)}
 #dictbar[hidden]{display:none}
 #dictbar .lab{font-size:19px;font-weight:700;display:flex;align-items:center;gap:8px}
@@ -690,7 +691,7 @@ function renderFrente(app){
   const p=P(),pi=PI(),f=F(),idx=pi.frentes.indexOf(f);
   const name=f.name||('Frente '+(idx+1));
   $('#ttl').textContent=pi.title+' · '+name;
-  const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}${MIRROR[k]?' ⇢':''}<input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"></label>`;
+  const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}${MIRROR[k]?' ⇢':''}<span style="display:flex;align-items:center;gap:5px"><input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"><span class="ordn" data-ord="${k}">${ordBadge(k)}</span></span></label>`;
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>${esc(name)}</b><button class="btn sm" data-act="renFrente">Renombrar</button></div></div>`+
   (f.photo?`<div class="tools"><button class="btn sm ${mode==='med'?'on':''}" data-act="mode" data-m="med">Medidas</button><button class="btn sm ${mode==='laser'?'on':''}" data-act="mode" data-m="laser">Mover láser</button><button class="btn sm ${mode==='nota'?'on':''}" data-act="mode" data-m="nota">Nota</button><button class="btn sm ${mode==='draw'?'on':''}" data-act="mode" data-m="draw">✏️ Dibujar</button></div>
    ${mode==='draw'?`<div class="dtools">${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
@@ -875,6 +876,8 @@ const SRec=window.SpeechRecognition||window.webkitSpeechRecognition;
 const DEF_ORDER=['lt','lb','ul','dl','rt','rb','ur','dr'];
 let DCFG=(()=>{const c=LS.get('fc_dorder',null);if(c&&Array.isArray(c.order)&&c.order.length===8&&DEF_ORDER.every(k=>c.order.includes(k)))return{order:c.order,skip:(c.skip||[]).filter(k=>DEF_ORDER.includes(k))};return{order:DEF_ORDER.slice(),skip:[]};})();
 let DORDER=DCFG.order.filter(k=>!DCFG.skip.includes(k));
+function ordBadge(k){const i=DORDER.indexOf(k);return i<0?'–':String(i+1);}
+function refreshOrd(){document.querySelectorAll('[data-ord]').forEach(e=>e.textContent=ordBadge(e.dataset.ord));}
 function orderEditor(){
   const cfg={order:DCFG.order.slice(),skip:DCFG.skip.slice()};
   const box=$('#mbox');
@@ -896,6 +899,7 @@ function orderEditor(){
       if(cfg.order.every(k=>cfg.skip.includes(k))){toast('Deja al menos una casilla marcada');return;}
       DCFG=cfg;LS.set('fc_dorder',cfg);DORDER=cfg.order.filter(k=>!cfg.skip.includes(k));
       if(Dict){Dict.i=Math.min(Dict.i,DORDER.length-1);dictBanner();}
+      refreshOrd();
       close();toast('Orden guardado');
     };
   };
