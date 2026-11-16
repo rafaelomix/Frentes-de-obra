@@ -709,7 +709,7 @@ function renderFrente(app){
     <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm.</div>
     ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
     <button class="btn full" data-act="addEnc">+ Añadir enchufe</button></div>
-   <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de medidas</div>
+   <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de descuentos</div>
     <label class="chk"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Igual que la promoción</label>
     ${f.cfg?`<div class="note" style="margin:-2px 2px 8px">Valores propios de este frente (mm):</div>
      <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt(f.cfg.cuts[k]))}"></label>`).join('')}</div>
