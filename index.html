@@ -969,14 +969,29 @@ function dictStart(){
 // Junta lo que se dice y solo lo procesa tras una pausa (para quien habla pausado)
 let dictPause=+LS.get('fc_pause',1.5);
 function collector(st,commit,show){
-  st.buf='';st.interim='';st.done=new Set();clearTimeout(st.timer);
+  const N=x=>String(x||'').toLowerCase().replace(/[.,;:¿?¡!]/g,' ').replace(/\s+/g,' ').trim();
+  st.buf='';st.interim='';st.done=new Set();st.consumed='';st.lastRaw='';st.wait=0;clearTimeout(st.timer);
+  const strip=raw=>{let t=N(raw);if(st.consumed&&t.startsWith(st.consumed))t=t.slice(st.consumed.length).trim();return t;};
+  const fire=()=>{
+    if(st.interim&&st.wait<4){st.wait++;st.timer=setTimeout(fire,700);return;} // aún está reconociendo: esperar
+    const t=(st.buf+(st.wait>=4&&st.interim?' '+st.interim:'')).trim();
+    st.consumed=st.lastRaw;st.buf='';st.interim='';st.wait=0;
+    if(t)commit(t);
+  };
   return e=>{
     for(let j=e.resultIndex;j<e.results.length;j++){const res=e.results[j];
-      if(res.isFinal){if(st.done.has(j))continue;st.done.add(j);st.buf=(st.buf+' '+res[0].transcript).trim();st.interim='';}
-      else st.interim=res[0].transcript;}
+      if(res.isFinal){
+        if(st.done.has(j))continue;st.done.add(j);
+        const raw=N(res[0].transcript);const fin=strip(res[0].transcript);st.lastRaw=raw;st.interim='';
+        if(!fin)continue;
+        if(st.buf&&fin.startsWith(st.buf))st.buf=fin;          // Safari: texto acumulado
+        else if(st.buf&&st.buf.endsWith(fin))continue;          // repetido
+        else st.buf=(st.buf+' '+fin).trim();
+      }else{let it=strip(res[0].transcript);if(st.buf&&it.startsWith(st.buf))it=it.slice(st.buf.length).trim();st.interim=it;}
+    }
     const now=(st.buf+' '+st.interim).trim();if(!now)return;
-    show(now);clearTimeout(st.timer);
-    st.timer=setTimeout(()=>{const t=(st.buf+' '+st.interim).trim();st.buf='';st.interim='';if(t)commit(t);},dictPause*1000);
+    show(now);clearTimeout(st.timer);st.wait=0;
+    st.timer=setTimeout(fire,dictPause*1000);
   };
 }
 function dictListen(){
@@ -984,6 +999,7 @@ function dictListen(){
   try{
     const r=new SRec();r.lang='es-ES';r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
     Dict.col=Dict.col||{};
+    r.onstart=()=>{if(Dict&&Dict.col){Dict.col.done=new Set();Dict.col.consumed='';}};
     r.onresult=collector(Dict.col,t=>{if(!Dict)return;const q=parseMeasure(t);if(q)dictApply(q,t);else{Dict.heard='No he entendido: «'+t+'»';dictBanner();}},
       t=>{if(!Dict)return;Dict.heard='🗣 '+t+' …';dictBanner();});
     r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Sin permiso para el micrófono');dictStop();}};
@@ -1062,6 +1078,7 @@ function encDictListen(){
   try{
     const r=new SRec();r.lang='es-ES';r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
     ED.col=ED.col||{};
+    r.onstart=()=>{if(ED&&ED.col){ED.col.done=new Set();ED.col.consumed='';}};
     r.onresult=collector(ED.col,t=>{if(!ED||!ED.els[0].isConnected)return encDictStop();if(!encDictApply(t))encDictShow('No he entendido: «'+t+'»');},
       t=>{if(!ED||!ED.els[0].isConnected)return encDictStop();encDictShow('🗣 '+t+' …');});
     r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Sin permiso para el micrófono');encDictStop();}};
