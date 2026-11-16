@@ -96,12 +96,8 @@ button.sec{background:#666}
       try {
         this._estado('Buscando láser…');
         const device = await navigator.bluetooth.requestDevice({
-          filters: [
-            { services: [BOSCH_SERVICE] },
-            { services: [LEICA_SERVICE] },
-            { namePrefix: 'GLM' },
-            { namePrefix: 'DISTO' }
-          ],
+          // Muestra todos los dispositivos BLE cercanos: algunos láser no anuncian su servicio ni un nombre fijo
+          acceptAllDevices: true,
           optionalServices: [BOSCH_SERVICE, LEICA_SERVICE]
         });
         this.device = device;
