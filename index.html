@@ -744,7 +744,8 @@ function renderFrente(app){
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
   `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Las casillas del mismo color van enlazadas: lo que escribas en la marcada con ⇢ se copia a su pareja (pared arriba → pared abajo, techo y mueble izquierda → derecha). Luego corrige la pareja si es distinta.</div>
    <div class="row" style="margin-bottom:10px"><button class="btn sm pri" data-act="dictStart" style="flex:1">🎤 Dictar medidas</button><button class="btn sm" data-act="orderEdit">⚙ Orden</button>
-     <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="obra" ${dictUnit==='obra'?'selected':''}>m y cm</option><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label></div>
+     <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="obra" ${dictUnit==='obra'?'selected':''}>m y cm</option><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label>
+     <label class="note" style="display:flex;align-items:center;gap:6px">espera <select class="in" id="dictPause" style="width:auto;padding:6px 8px;font-size:15px">${[1,1.5,2,2.5,3,4].map(v=>`<option value="${v}" ${v===dictPause?'selected':''}>${String(v).replace('.',',')} s</option>`).join('')}</select></label></div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div>
    <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes</div>
     <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm.</div>
@@ -762,6 +763,7 @@ function renderFrente(app){
    <button class="btn full" style="margin-top:8px" data-act="copyDxf">Copiar DXF (texto)</button>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delFrente">Borrar frente</button>`;
   const du=$('#dictUnit');if(du)du.onchange=()=>{dictUnit=du.value;LS.set('fc_du',dictUnit);dictBanner();};
+  const dp=$('#dictPause');if(dp)dp.onchange=()=>{dictPause=+dp.value;LS.set('fc_pause',dictPause);};
   app.querySelectorAll('input[data-k]').forEach(i=>i.onfocus=()=>{if(Dict){const j=DORDER.indexOf(i.dataset.k);if(j>=0){Dict.i=j;dictBanner();}}});
   app.querySelectorAll('input[data-k]').forEach(i=>i.oninput=()=>{
     const v=i.value.trim(),k=i.dataset.k;f.m[k]=v===''?null:v;i.classList.toggle('miss',num(v)==null);
@@ -964,18 +966,26 @@ function dictStart(){
   const f=F();let i=DORDER.findIndex(k=>num(f.m[k])==null);if(i<0)i=0;
   Dict={i,rec:null,heard:'',on:true};dictListen();dictBanner();
 }
+// Junta lo que se dice y solo lo procesa tras una pausa (para quien habla pausado)
+let dictPause=+LS.get('fc_pause',1.5);
+function collector(st,commit,show){
+  st.buf='';st.interim='';st.done=new Set();clearTimeout(st.timer);
+  return e=>{
+    for(let j=e.resultIndex;j<e.results.length;j++){const res=e.results[j];
+      if(res.isFinal){if(st.done.has(j))continue;st.done.add(j);st.buf=(st.buf+' '+res[0].transcript).trim();st.interim='';}
+      else st.interim=res[0].transcript;}
+    const now=(st.buf+' '+st.interim).trim();if(!now)return;
+    show(now);clearTimeout(st.timer);
+    st.timer=setTimeout(()=>{const t=(st.buf+' '+st.interim).trim();st.buf='';st.interim='';if(t)commit(t);},dictPause*1000);
+  };
+}
 function dictListen(){
   if(!Dict)return;
   try{
     const r=new SRec();r.lang='es-ES';r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
-    r.onresult=e=>{
-      for(let j=e.resultIndex;j<e.results.length;j++){
-        const res=e.results[j];
-        if(!res.isFinal){Dict.heard=res[0].transcript;dictBanner();continue;}
-        let done=false;for(let a=0;a<res.length&&!done;a++){const q=parseMeasure(res[a].transcript);if(q){dictApply(q,res[a].transcript);done=true;}}
-        if(!done){Dict.heard='No he entendido: «'+res[0].transcript+'»';dictBanner();}
-      }
-    };
+    Dict.col=Dict.col||{};
+    r.onresult=collector(Dict.col,t=>{if(!Dict)return;const q=parseMeasure(t);if(q)dictApply(q,t);else{Dict.heard='No he entendido: «'+t+'»';dictBanner();}},
+      t=>{if(!Dict)return;Dict.heard='🗣 '+t+' …';dictBanner();});
     r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Sin permiso para el micrófono');dictStop();}};
     r.onend=()=>{if(Dict&&Dict.rec===r){setTimeout(()=>{if(Dict&&Dict.rec===r){try{r.start();}catch(err){Dict.heard='Pulsa 🎤 Seguir para continuar';Dict.paused=true;dictBanner();}}},150);}};
     Dict.rec=r;Dict.paused=false;r.start();
@@ -998,7 +1008,7 @@ function dictNext(){
   dictBanner();
 }
 function dictStop(){
-  if(!Dict)return;const r=Dict.rec;Dict=null;try{r&&r.stop();}catch(e){}
+  if(!Dict)return;if(Dict.col)clearTimeout(Dict.col.timer);const r=Dict.rec;Dict=null;try{r&&r.stop();}catch(e){}
   document.querySelectorAll('input.dicting').forEach(x=>x.classList.remove('dicting'));
   const b=$('#dictbar');b.hidden=true;b.innerHTML='';drawCanvas();document.body.style.paddingBottom='';
 }
@@ -1039,7 +1049,7 @@ function encDictStart(){
   const els=[...$('#mbox').querySelectorAll('[data-i]')];
   ED={els,s:0,rec:null};encDictListen();encDictShow('');
 }
-function encDictStop(){if(!ED)return;const r=ED.rec;ED=null;try{r&&r.stop();}catch(e){}
+function encDictStop(){if(!ED)return;if(ED.col)clearTimeout(ED.col.timer);const r=ED.rec;ED=null;try{r&&r.stop();}catch(e){}
   document.querySelectorAll('#mbox .dicting').forEach(x=>x.classList.remove('dicting'));const g=$('#edGo');if(g)g.textContent='🎤 Dictar enchufe';}
 function encDictShow(heard){
   if(!ED)return;const st=ESTEPS[ED.s],m=$('#edMsg'),g=$('#edGo');if(!m){encDictStop();return;}
@@ -1051,13 +1061,9 @@ function encDictListen(){
   if(!ED)return;
   try{
     const r=new SRec();r.lang='es-ES';r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
-    r.onresult=e=>{
-      if(!ED||!ED.els[0].isConnected)return encDictStop();
-      for(let j=e.resultIndex;j<e.results.length;j++){const res=e.results[j];
-        if(!res.isFinal){encDictShow(res[0].transcript);continue;}
-        let ok=false;for(let a=0;a<res.length&&!ok;a++)ok=encDictApply(res[a].transcript);
-        if(!ok)encDictShow('No he entendido: «'+res[0].transcript+'»');}
-    };
+    ED.col=ED.col||{};
+    r.onresult=collector(ED.col,t=>{if(!ED||!ED.els[0].isConnected)return encDictStop();if(!encDictApply(t))encDictShow('No he entendido: «'+t+'»');},
+      t=>{if(!ED||!ED.els[0].isConnected)return encDictStop();encDictShow('🗣 '+t+' …');});
     r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Sin permiso para el micrófono');encDictStop();}};
     r.onend=()=>{if(ED&&ED.rec===r&&ED.els[0].isConnected)setTimeout(()=>{if(ED&&ED.rec===r){try{r.start();}catch(err){encDictStop();}}},150);};
     ED.rec=r;r.start();
