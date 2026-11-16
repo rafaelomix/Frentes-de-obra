@@ -117,7 +117,7 @@ function geom(f,c){
 const dist=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1]);
 const ENT={1:'sencillo',2:'doble',3:'triple',4:'cuádruple'};
 // ---- Dictado: interpretar lo que se dice ----
-const NUMW={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,
+const NUMW={cero:0,un:1,uno:1,una:1,unos:1,unas:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,
  dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiun:21,veintiuno:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,
  veintisiete:27,veintiocho:28,veintinueve:29,treinta:30,cuarenta:40,cincuenta:50,sesenta:60,setenta:70,ochenta:80,noventa:90,cien:100,ciento:100,
  doscientos:200,doscientas:200,trescientos:300,cuatrocientos:400,quinientos:500,seiscientos:600,setecientos:700,ochocientos:800,novecientos:900};
@@ -142,7 +142,15 @@ function parseSpoken(t){
 // Modo obra: metros + centímetros (+ "con X" o "y medio" = milímetros). Devuelve mm.
 // "uno cincuenta y siete con cinco" = 1575 · "dos treinta y tres" = 2330 · "157" = 1570
 function pegados(t){t=t.replace(/(\d)[.,](\d)/g,'$1\u00a7$2').replace(/[.,;:]/g,' ').replace(/\u00a7/g,',');return t.replace(/(inta|enta)y(?=[a-z])/g,'$1 y ').replace(/(\S)ymedio\b/g,'$1 y medio').replace(/\bymedio\b/g,'y medio');}
+function segment(w){ // separa números pegados: "unosetentaytres" -> uno setenta y tres
+  const keys=Object.keys(NUMW).concat(['y']);const memo={};
+  const go=i=>{if(i===w.length)return[];if(i in memo)return memo[i];memo[i]=null;
+    for(const k of keys.slice().sort((a,b)=>b.length-a.length)){if(w.startsWith(k,i)){const r=go(i+k.length);if(r){memo[i]=[k].concat(r);break;}}}
+    return memo[i];};
+  return w.length>3?go(0):null;
+}
 function groupNums(ws){
+  ws=ws.flatMap(w=>(w&&!/^\d+$/.test(w)&&w!=='y'&&!(w in NUMW)&&segment(w))||[w]);
   const out=[];let cur=null,last=null,y=false;
   for(const w of ws){
     if(!w)continue;if(w==='y'){y=true;continue;}
