@@ -77,7 +77,7 @@ table.dims td:last-child{text-align:right;font-weight:700;font-variant-numeric:t
 #dictbar .lab{font-size:19px;font-weight:700;display:flex;align-items:center;gap:8px}
 #dictbar .heard{min-height:22px;font-size:15px;opacity:.85;margin:4px 0 10px}
 #dictbar .btns{display:flex;gap:8px}#dictbar .btns .btn{flex:1;min-height:44px}
-input.in.dicting{outline:3px solid #f59e0b;outline-offset:2px}
+input.in.dicting,select.in.dicting{outline:3px solid #f59e0b;outline-offset:2px}
 .mic{display:inline-block;width:12px;height:12px;border-radius:50%;background:#ef4444;animation:pul 1s infinite}
 @keyframes pul{50%{opacity:.25}}
 .dtools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-2px 0 10px}
@@ -968,10 +968,75 @@ function setMeasureInput(k,v){
   const f=F();f.m[k]=v===''?null:v;
   const ip=document.querySelector(`input[data-k="${k}"]`);if(ip){ip.value=v;ip.classList.toggle('miss',num(v)==null);}
 }
+// ---- Dictado en la ventana del enchufe (orden fijo) ----
+let ED=null;
+const ESTEPS=[
+  {i:0,t:'Lado del láser',h:'di «izquierda» o «derecha»',w:t=>/izq/.test(t)?'izq':/(derech|dcha)/.test(t)?'dcha':null},
+  {i:1,t:'Distancia horizontal hasta el eje',num:true},
+  {i:2,t:'¿Por encima o por debajo de la línea?',h:'di «arriba» o «abajo»',w:t=>/(arriba|encima|sobre|por encima)/.test(t)?'arriba':/(abajo|debajo)/.test(t)?'abajo':null},
+  {i:3,t:'Distancia vertical hasta el eje',num:true},
+  {i:4,t:'Tipo',h:'di «sencillo», «doble», «triple» o «cuádruple»',w:t=>/(sencill|\buno\b|^1$)/.test(t)?'1':/(dobl|\bdos\b|^2$)/.test(t)?'2':/(tripl|\btres\b|^3$)/.test(t)?'3':/(cuadrupl|\bcuatro\b|^4$)/.test(t)?'4':null},
+  {i:5,t:'Disposición',h:'di «horizontal» o «vertical»',w:t=>/horiz/.test(t)?'h':/vert/.test(t)?'v':null}
+];
+function encDictUI(){
+  const box=$('#mbox'),h3=box.querySelector('h3');if(!h3)return;
+  h3.insertAdjacentHTML('afterend',`<div id="edBar" style="margin:-4px 0 10px"><button class="btn sm pri" id="edGo">🎤 Dictar enchufe (${dictUnit})</button><div class="note" id="edMsg" style="margin-top:6px"></div></div>`);
+  $('#edGo').onclick=()=>{if(ED)encDictStop();else encDictStart();};
+}
+function encDictStart(){
+  if(!SRec){toast(inClaude?'Para dictar usa la versión de GitHub.':'Este navegador no permite dictar.');return;}
+  const els=[...$('#mbox').querySelectorAll('[data-i]')];
+  ED={els,s:0,rec:null};encDictListen();encDictShow('');
+}
+function encDictStop(){if(!ED)return;const r=ED.rec;ED=null;try{r&&r.stop();}catch(e){}
+  document.querySelectorAll('#mbox .dicting').forEach(x=>x.classList.remove('dicting'));const g=$('#edGo');if(g)g.textContent='🎤 Dictar enchufe ('+dictUnit+')';}
+function encDictShow(heard){
+  if(!ED)return;const st=ESTEPS[ED.s],m=$('#edMsg'),g=$('#edGo');if(!m){encDictStop();return;}
+  ED.els.forEach((x,j)=>x.classList.toggle('dicting',st&&j===st.i));
+  if(g)g.textContent='■ Parar dictado';
+  m.innerHTML=st?`<b>${ED.s+1}. ${esc(st.t)}</b> — ${esc(st.h||'di la medida en '+dictUnit)}<br>${esc(heard||'')}`:`<b>Listo.</b> Di «guardar» o pulsa el botón. ${esc(heard||'')}`;
+}
+function encDictListen(){
+  if(!ED)return;
+  try{
+    const r=new SRec();r.lang='es-ES';r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
+    r.onresult=e=>{
+      if(!ED||!ED.els[0].isConnected)return encDictStop();
+      for(let j=e.resultIndex;j<e.results.length;j++){const res=e.results[j];
+        if(!res.isFinal){encDictShow(res[0].transcript);continue;}
+        let ok=false;for(let a=0;a<res.length&&!ok;a++)ok=encDictApply(res[a].transcript);
+        if(!ok)encDictShow('No he entendido: «'+res[0].transcript+'»');}
+    };
+    r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Sin permiso para el micrófono');encDictStop();}};
+    r.onend=()=>{if(ED&&ED.rec===r&&ED.els[0].isConnected)setTimeout(()=>{if(ED&&ED.rec===r){try{r.start();}catch(err){encDictStop();}}},150);};
+    ED.rec=r;r.start();
+  }catch(e){toast('No se pudo activar el micrófono');encDictStop();}
+}
+function encDictApply(raw){
+  if(!ED)return true;
+  const t=String(raw).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  if(/\b(guardar|guarda|anadir|anade|aceptar|listo)\b/.test(t)){const b=[...$('#mbox').querySelectorAll('.btn.pri')].find(x=>x.id!=='edGo');encDictStop();if(b)b.click();return true;}
+  const st=ESTEPS[ED.s];
+  const q=parseSpoken(t);
+  if(q&&q.cmd==='stop'){encDictStop();return true;}
+  if(q&&q.cmd==='back'){ED.s=Math.max(0,ED.s-1);encDictShow('');return true;}
+  if(!st)return false;
+  if(q&&q.cmd==='next'){encDictNext();return true;}
+  const el=ED.els[st.i];
+  if(st.num){if(!q||q.num==null)return false;el.value=String(Math.round(q.num*(dictUnit==='cm'?10:1)*10)/10);}
+  else{const v=st.w(t);if(v==null)return false;el.value=v;}
+  try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}
+  encDictNext();return true;
+}
+function encDictNext(){
+  if(!ED)return;ED.s++;
+  if(ED.s===5&&ED.els[4].value==='1')ED.s++; // sencillo: no hay disposición
+  encDictShow('');
+}
 async function encForm(i){
   const p=P(),f=F();f.enchufes=f.enchufes||[];
   const e=i==null?{lado:'dcha',h:'',vpos:'arriba',v:'',n:1,ori:'h'}:f.enchufes[i];
-  const r=await modal({title:i==null?'Añadir enchufe':'Enchufe E'+(i+1),fields:[
+  const pr=modal({title:i==null?'Añadir enchufe':'Enchufe E'+(i+1),fields:[
     {label:'Lado respecto a la línea vertical del láser',sel:[['izq','A la izquierda'],['dcha','A la derecha']],value:e.lado},
     {label:'Distancia horizontal desde la línea vertical hasta el eje (mm)',value:e.h,num:true,ph:'mm'},
     {label:'Respecto a la línea horizontal del láser',sel:[['arriba','Por encima'],['abajo','Por debajo']],value:e.vpos},
@@ -979,6 +1044,8 @@ async function encForm(i){
     {label:'Tipo',sel:[['1','Sencillo'],['2','Doble'],['3','Triple'],['4','Cuádruple']],value:String(e.n||1)},
     {label:'Disposición (doble, triple o cuádruple)',sel:[['h','Horizontal'],['v','Vertical']],value:e.ori||'h'}],
     buttons:i==null?[{label:'Cancelar',v:null},{label:'Añadir',v:'ok',pri:true}]:[{label:'Borrar',v:'del',dang:true},{label:'Cancelar',v:null},{label:'Guardar',v:'ok',pri:true}]});
+  encDictUI();
+  const r=await pr;encDictStop();
   if(!r.v)return;
   if(r.v==='del'){f.enchufes.splice(i,1);}
   else{
