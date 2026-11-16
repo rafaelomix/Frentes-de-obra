@@ -190,8 +190,9 @@ function parseObra(t){
   const g=groupNums(main.split(/\s+/));if(!g)return null;
   let mm;
   if(g.length===1)mm=g[0]*10;                                   // centímetros
-  else if(g.length===2&&g[1]<100)mm=g[0]*1000+g[1]*10;           // metros + cm
-  else if(g.length===3&&g[1]<100&&g[2]<10)mm=g[0]*1000+g[1]*10+g[2];
+  else if(g.length===2&&g[0]<=9&&g[1]<100)mm=g[0]*1000+g[1]*10;  // metros + cm  ("dos treinta y tres" = 2330)
+  else if(g.length===2&&g[0]>=10&&g[1]<10)mm=g[0]*10+g[1];         // cm + mm      ("diecisiete seis" = 176)
+  else if(g.length===3&&g[0]<=9&&g[1]<100&&g[2]<10)mm=g[0]*1000+g[1]*10+g[2];
   else return null;
   return{mm:mm+extra};
 }
