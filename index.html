@@ -602,16 +602,25 @@ function modal({title,text,fields=[],buttons}){
   return new Promise(res=>{
     const box=$('#mbox');
     box.innerHTML=`<h3>${esc(title||'')}</h3>${text?`<p class="note" style="font-size:15px">${esc(text)}</p>`:''}`+
-      fields.map((f,i)=>`<div class="fld"><label>${esc(f.label||'')}</label>${f.sel?`<select class="in" data-i="${i}">${f.sel.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(f.value)?'selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input class="in" data-i="${i}" type="text" ${f.num?'inputmode="decimal"':''} value="${esc(f.value==null?'':f.value)}" placeholder="${esc(f.ph||'')}">`}</div>`).join('')+
+      fields.map((f,i)=>`<div class="fld"><label>${esc(f.label||'')}</label>${f.sel?`<select class="in" data-i="${i}">${f.sel.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(f.value)?'selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input class="in" data-i="${i}" type="${f.type||'text'}" ${f.num?'inputmode="decimal"':''} value="${esc(f.value==null?'':f.value)}" placeholder="${esc(f.ph||'')}">`}</div>`).join('')+
       `<div class="btns">${buttons.map((b,i)=>`<button class="btn ${b.pri?'pri':''} ${b.dang?'dang':''}" data-b="${i}">${esc(b.label)}</button>`).join('')}</div>`;
     $('#modal').hidden=false;
     const ins=[...box.querySelectorAll('input,select')];
-    const fi=box.querySelector('input');if(fi&&!fields.some(f=>f.sel))setTimeout(()=>{fi.focus();fi.select();},50);
+    const fi=box.querySelector('input');if(fi&&!fields.some(f=>f.sel))setTimeout(()=>{fi.focus();try{fi.select();}catch(e){}},50);
     const done=v=>{$('#modal').hidden=true;box.innerHTML='';res({v,values:ins.map(i=>i.value)});};
     box.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>done(buttons[+b.dataset.b].v));
     ins.forEach(i=>i.onkeydown=e=>{if(e.key==='Enter'){const p=buttons.find(b=>b.pri);done(p?p.v:'ok');}});
     $('#modal').onclick=e=>{if(e.target.id==='modal')done(null);};
   });
+}
+function hoy(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fFecha(s){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||'');return m?m[3]+'/'+m[2]+'/'+m[1]:'';}
+async function pisoForm(pi){
+  const pr=modal({title:pi?'Editar piso':'Añadir piso',fields:[{label:'Nombre del piso',value:pi?pi.title:'',ph:'p. ej. 1º A'},{label:'Fecha de medición',type:'date',value:(pi&&pi.fecha)||hoy()}],
+    buttons:[{label:'Cancelar',v:null},{label:pi?'Guardar':'Añadir',v:'ok',pri:true}]});
+  const fl=[...$('#mbox').querySelectorAll('.fld')];if(fl.length===2){const w=document.createElement('div');w.className='grid2';fl[0].before(w);w.append(fl[0],fl[1]);}
+  const r=await pr;if(!r.v)return null;const t=r.values[0].trim();if(!t){toast('Pon el nombre del piso');return null;}
+  return{title:t,fecha:r.values[1]||hoy()};
 }
 async function askText(title,label,value,ph){const r=await modal({title,fields:[{label,value,ph}]});return r.v?r.values[0].trim():null;}
 async function confirmDel(what){const r=await modal({title:'¿Borrar '+what+'?',text:'No se puede deshacer.',buttons:[{label:'Cancelar',v:null},{label:'Borrar',v:'ok',dang:true}]});return !!r.v;}
@@ -668,14 +677,19 @@ function renderHome(app){
 document.addEventListener('change',e=>{if(e.target&&e.target.id==='incFotos'){incFotos=e.target.checked;try{localStorage.setItem('fc_incFotos',incFotos?'1':'0');}catch(_){}}});
 function renderPromo(app){
   const p=P();$('#ttl').textContent=p.title;
+  const loc=p.loc||{};
   app.innerHTML=`<div class="card"><div class="ttl"><b>${esc(p.title)}</b><button class="btn sm" data-act="renPromo">Renombrar</button></div></div>
+  <div class="card"><div style="font-weight:600;margin-bottom:8px">Ubicación de la obra</div>
+   <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
+   <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
+   <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div>
   <div class="card"><div style="font-weight:600;margin-bottom:8px">Descuentos sobre la medida (mm)</div>
    <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-cut="${k}" value="${esc(fmt(p.cuts[k]))}"></label>`).join('')}</div>
    <div style="font-weight:600;margin:12px 0 8px">Enchufes (mm)</div>
    <div class="grid2"><label class="note">Ø agujero<input class="in" inputmode="decimal" data-pset="dia" value="${esc(fmt(num(p.dia)||68))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-pset="sep" value="${esc(fmt(num(p.sep)||70))}"></label></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
-    return `<button class="item" data-act="openPiso" data-id="${pi.id}"><div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
+    return `<button class="item" data-act="openPiso" data-id="${pi.id}"><div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Sin pisos todavía.</div>`)+
   `<button class="btn pri full" data-act="newPiso">+ Añadir piso</button>
    <h2>Exportar</h2>
@@ -686,12 +700,13 @@ function renderPromo(app){
    <p class="note" style="margin:4px 2px 0">Lo mismo, más un DXF con todos los pisos y las fotos anotadas.</p>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPromo">Borrar promoción</button>`;
   app.querySelectorAll('[data-pset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0){p[i.dataset.pset]=v;Store.save(p);}});
+  const lt=$('#locTxt');if(lt)lt.onchange=()=>{p.loc={...(p.loc||{}),txt:lt.value.trim()};Store.save(p);};
   app.querySelectorAll('[data-cut]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null){p.cuts[i.dataset.cut]=v;Store.save(p);}});
 }
 
 function renderPiso(app){
   const p=P(),pi=PI();$('#ttl').textContent=pi.title;
-  app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Renombrar</button></div></div>
+  app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
   <h2>Frentes</h2>`+
   (pi.frentes.length?pi.frentes.map((f,i)=>{const n=filled(f);
     return `<button class="item" data-act="openFrente" data-id="${f.id}">${f.photo?`<img class="thumb" data-ph="${esc(JSON.stringify(f.photo))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}${f.cfg?' · <span style="color:var(--mut)">config. propia</span>':''}</div></div><span class="chev">›</span></button>`;}).join('')
@@ -1390,6 +1405,20 @@ Laser.onMedida=mm=>{
   lzMark();
 };
 const A={
+  locSave(){
+    const p=P();if(!navigator.geolocation){toast('Este dispositivo no da la posición');return;}
+    const g=$('#locGps');if(g)g.textContent='Buscando posición…';
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const c=pos.coords;p.loc={...(p.loc||{}),lat:c.latitude,lng:c.longitude,acc:c.accuracy};Store.save(p);
+      toast('Posición de la obra guardada');if(route.v==='promo')render();
+    },err=>{toast(err.code===1?'Sin permiso para la ubicación':'No se pudo obtener la posición');if(route.v==='promo')render();},{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+  },
+  locNav(){
+    const p=P(),l=p.loc||{},lt=$('#locTxt'),txt=(lt&&lt.value.trim())||l.txt||'';
+    const dest=l.lat!=null?l.lat+','+l.lng:txt;
+    if(!dest){toast('Guarda la posición o escribe la dirección de la obra');return;}
+    window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest),'_blank');
+  },
   addCop(){copForm(null);},
   editCop(d){copForm(+d.i);},
   lzCon(){if(!Laser.soportado()){toast(/iPad|iPhone|Macintosh/.test(navigator.userAgent)?'En iPad abre la app en el navegador Bluefy para usar el láser.':'Este navegador no tiene Bluetooth. Usa Chrome.');return;}if(Laser.conectado()){Laser.desconectar();return;}Laser.conectar();},
@@ -1399,10 +1428,10 @@ const A={
   openPromo(d){go({v:'promo',p:d.id});},
   async renPromo(){const p=P(),t=await askText('Renombrar promoción','Título',p.title);if(t){p.title=t;Store.save(p);render();}},
   async delPromo(){const p=P();if(!await confirmDel('la promoción "'+p.title+'"'))return;S.promos=S.promos.filter(x=>x!==p);await Store.remove(p.id);go({v:'home'});},
-  async newPiso(){const p=P(),t=await askText('Añadir piso','Nombre del piso','','p. ej. 1º A');if(!t)return;
-    const pi={id:uid(),title:t,frentes:[]};p.pisos.push(pi);Store.save(p);go({v:'piso',p:p.id,pi:pi.id});},
+  async newPiso(){const p=P(),r=await pisoForm(null);if(!r)return;
+    const pi={id:uid(),title:r.title,fecha:r.fecha,frentes:[]};p.pisos.push(pi);Store.save(p);go({v:'piso',p:p.id,pi:pi.id});},
   openPiso(d){go({v:'piso',p:route.p,pi:d.id});},
-  async renPiso(){const pi=PI(),t=await askText('Renombrar piso','Nombre',pi.title);if(t){pi.title=t;Store.save(P());render();}},
+  async renPiso(){const pi=PI(),r=await pisoForm(pi);if(r){pi.title=r.title;pi.fecha=r.fecha;Store.save(P());render();}},
   async delPiso(){const p=P(),pi=PI();if(!await confirmDel('el piso "'+pi.title+'"'))return;p.pisos=p.pisos.filter(x=>x!==pi);Store.save(p);go({v:'promo',p:p.id});},
   addCam(){pickPhoto('#fCam',null);},addGal(){pickPhoto('#fGal',null);},
   addNoPhoto(){newFrente(null);},
