@@ -107,32 +107,46 @@ button.sec{background:#666}
         this._estado('Conectando a ' + (device.name || 'láser') + '…');
         const server = await device.gatt.connect();
 
+        this._estado('Conectado a "' + (device.name || 'sin nombre') + '". Buscando servicios…');
+        try {
+          const lista = await server.getPrimaryServices();
+          this._estado('Servicios visibles: ' + (lista.length ? lista.map(s => s.uuid).join(', ') : 'ninguno'));
+        } catch (e) { this._estado('No se pudieron listar servicios: ' + e.message); }
+
         // ¿Bosch?
         try {
           const srv = await server.getPrimaryService(BOSCH_SERVICE);
+          this._estado('Servicio Bosch encontrado');
           const ch = await srv.getCharacteristic(BOSCH_CHAR);
-          await ch.startNotifications();
+          const p = ch.properties;
+          this._estado('Característica Bosch: notify=' + p.notify + ' indicate=' + p.indicate + ' write=' + p.write + ' writeNoResp=' + p.writeWithoutResponse);
           ch.addEventListener('characteristicvaluechanged', (e) => this._bosch(e.target.value));
-          await ch.writeValue(BOSCH_AUTOSYNC);
+          await ch.startNotifications();
+          try {
+            if (p.write) await ch.writeValueWithResponse(BOSCH_AUTOSYNC);
+            else await ch.writeValueWithoutResponse(BOSCH_AUTOSYNC);
+          } catch (e) {
+            this._estado('Aviso al activar envío automático: ' + e.message);
+          }
           this.marca = 'Bosch';
           this._estado('Conectado: ' + (device.name || 'Bosch GLM') + '. Pulsa el botón de medir del láser.');
           return true;
-        } catch (e) { /* no es Bosch */ }
+        } catch (e) { this._estado('Bosch: ' + e.message); }
 
         // ¿Leica?
         try {
           const srv = await server.getPrimaryService(LEICA_SERVICE);
           const ch = await srv.getCharacteristic(LEICA_DIST);
-          await ch.startNotifications();
           ch.addEventListener('characteristicvaluechanged', (e) => {
             const dv = e.target.value;
             if (this.onRaw) this.onRaw(this._hex(dv));
             if (dv.byteLength >= 4) this._emitir(dv.getFloat32(0, true));
           });
+          await ch.startNotifications();
           this.marca = 'Leica';
           this._estado('Conectado: ' + (device.name || 'Leica DISTO') + '. Pulsa el botón de medir del láser.');
           return true;
-        } catch (e) { /* no es Leica */ }
+        } catch (e) { this._estado('Leica: ' + e.message); }
 
         this._estado('Conectado, pero no reconozco el modelo del láser.');
         return false;
