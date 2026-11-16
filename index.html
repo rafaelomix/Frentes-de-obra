@@ -693,11 +693,11 @@ function renderFrente(app){
   $('#ttl').textContent=pi.title+' · '+name;
   const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}${MIRROR[k]?' ⇢':''}<span style="display:flex;align-items:center;gap:5px"><input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"><span class="ordn" data-ord="${k}">${ordBadge(k)}</span></span></label>`;
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>${esc(name)}</b><button class="btn sm" data-act="renFrente">Renombrar</button></div></div>`+
-  (f.photo?`<div class="tools"><button class="btn sm ${mode==='med'?'on':''}" data-act="mode" data-m="med">Medidas</button><button class="btn sm ${mode==='laser'?'on':''}" data-act="mode" data-m="laser">Mover láser</button><button class="btn sm ${mode==='nota'?'on':''}" data-act="mode" data-m="nota">Nota</button><button class="btn sm ${mode==='draw'?'on':''}" data-act="mode" data-m="draw">✏️ Dibujar</button></div>
+  (f.photo?`<div class="tools"><button class="btn sm ${mode==='med'?'on':''}" data-act="mode" data-m="med">Medidas</button><button class="btn sm ${mode==='laser'?'on':''}" data-act="mode" data-m="laser">Mover láser</button><button class="btn sm ${mode==='nota'?'on':''}" data-act="mode" data-m="nota">Nota</button><button class="btn sm ${mode==='draw'?'on':''}" data-act="mode" data-m="draw">✏️ Dibujar</button><button class="btn sm pri" data-act="dictStart">🎤 Dictar</button></div>
    ${mode==='draw'?`<div class="dtools">${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
      <button class="btn sm ${drawW===4?'on':''}" data-act="dw" data-w="4">Fino</button><button class="btn sm ${drawW===9?'on':''}" data-act="dw" data-w="9">Grueso</button>
      <button class="btn sm" data-act="dundo">↶ Deshacer</button><button class="btn sm dang" data-act="dclear">Borrar dibujo</button></div>`:''}
-   <p class="hint">${mode==='med'?'Toca una cifra de la foto para escribir la medida.':mode==='laser'?'Toca o arrastra sobre la foto para poner el cruce del láser.':mode==='draw'?'Pinta sobre la foto con el lápiz o el dedo. Si usas el Apple Pencil, el dedo no pinta (así puedes apoyar la mano).':'Toca la foto para añadir una nota; toca una nota para editarla.'}</p>
+   <p class="hint">${mode==='med'?(Dict?'Dictando: toca una cifra de la foto para saltar a esa medida.':'Toca una cifra de la foto para escribir la medida, o pulsa 🎤 Dictar.'):mode==='laser'?'Toca o arrastra sobre la foto para poner el cruce del láser.':mode==='draw'?'Pinta sobre la foto con el lápiz o el dedo. Si usas el Apple Pencil, el dedo no pinta (así puedes apoyar la mano).':'Toca la foto para añadir una nota; toca una nota para editarla.'}</p>
    <div class="cvwrap"><canvas id="cv"></canvas></div>
    <div class="grid2" style="margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
@@ -792,6 +792,7 @@ function drawAnnot(ctx,img,W,H,f,collect){
     const r={k,x:cx-bw/2,y:cy-bh/2,w:bw,h:bh};
     ctx.fillStyle=v==null?'#ea580c':'rgba(17,24,39,.9)';rr(ctx,r.x,r.y,r.w,r.h,8*s);ctx.fill();
     ctx.strokeStyle=PAIRC[k];ctx.lineWidth=3.5*s;ctx.stroke();
+    if(collect&&typeof Dict!=='undefined'&&Dict&&DORDER[Dict.i]===k){ctx.save();ctx.strokeStyle='#f59e0b';ctx.lineWidth=6*s;rr(ctx,r.x-7*s,r.y-7*s,r.w+14*s,r.h+14*s,12*s);ctx.stroke();ctx.restore();}
     ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,cx,cy+1*s);
     out.push(r);
   }
@@ -834,6 +835,7 @@ async function setupCanvas(){
       return;
     }
     const h=hits.slice().reverse().find(r=>pt[0]>=r.x&&pt[0]<=r.x+r.w&&pt[1]>=r.y&&pt[1]<=r.y+r.h);
+    if(mode==='med'&&Dict&&h&&h.k){const j=DORDER.indexOf(h.k);if(j>=0){Dict.i=j;Dict.heard='';dictBanner();}return;}
     if(mode==='med'){if(h&&h.k)editMeasure(h.k);else if(h&&h.note!=null)editNote(h.note);}
     else if(mode==='nota'){if(h&&h.note!=null)editNote(h.note);else addNote(pt[0]/cv.width,pt[1]/cv.height);}
   };
@@ -950,10 +952,11 @@ function dictNext(){
 function dictStop(){
   if(!Dict)return;const r=Dict.rec;Dict=null;try{r&&r.stop();}catch(e){}
   document.querySelectorAll('input.dicting').forEach(x=>x.classList.remove('dicting'));
-  const b=$('#dictbar');b.hidden=true;b.innerHTML='';
+  const b=$('#dictbar');b.hidden=true;b.innerHTML='';drawCanvas();document.body.style.paddingBottom='';
 }
 function dictBanner(){
-  const b=$('#dictbar');if(!Dict){b.hidden=true;return;}
+  const b=$('#dictbar');drawCanvas();if(!Dict){b.hidden=true;document.body.style.paddingBottom='';return;}
+  document.body.style.paddingBottom='170px';
   const k=DORDER[Dict.i];
   document.querySelectorAll('input[data-k]').forEach(x=>x.classList.toggle('dicting',x.dataset.k===k));
   b.hidden=false;
