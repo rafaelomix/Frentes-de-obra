@@ -726,14 +726,11 @@ function renderFrente(app){
    <div class="row" style="margin-bottom:4px"><button class="btn sm" id="lzBtn" data-act="lzCon" style="flex:1">📏 Conectar láser</button><button class="btn sm pri" id="lzMed" data-act="lzMed" hidden>Medir</button></div>
    <div class="note" id="lzSt" style="margin-bottom:10px">${Laser.conectado()?'Láser conectado. Toca una casilla (o una cifra de la foto) para elegir dónde cae la siguiente medida.':''}</div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div>
-   <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes</div>
-    <div class="note" style="margin-bottom:8px">Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm.</div>
+   <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes y copetes</div>
+    <div class="note" style="margin-bottom:8px">Enchufes: distancias desde las líneas del láser hasta el eje (centro). Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm. Copetes: remate lateral, largo = pared en obra − 14 mm (12 grosor del frente + 2 holgura).</div>
     ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
-    <button class="btn full" data-act="addEnc">+ Añadir enchufe</button></div>
-   <div class="card"><div style="font-weight:600;margin-bottom:4px">Copetes</div>
-    <div class="note" style="margin-bottom:8px">Remate lateral izquierdo o derecho: pieza aparte de alto × largo. Largo = medida de la pared en obra − 14 mm (12 de grosor del frente + 2 de holgura del cemento cola). El frente no cambia.</div>
     ${(f.copetes||[]).map((cp,i)=>`<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1} · Copete</div><div class="s">${esc(copDesc(cp))}</div></div><span class="chev">›</span></button>`).join('')}
-    <button class="btn full" data-act="addCop">+ Añadir copete</button></div>
+    <div class="grid2"><button class="btn" data-act="addEnc">+ Añadir enchufe</button><button class="btn" data-act="addCop">+ Añadir copete</button></div></div>
    <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de descuentos</div>
     <label class="chk"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Igual que la promoción</label>
     ${f.cfg?`<div class="note" style="margin:-2px 2px 8px">Valores propios de este frente (mm):</div>
@@ -1079,10 +1076,13 @@ async function copForm(i){
   const c=i==null?{lado:(f.copetes.some(x=>x.lado==='izq')?'dcha':'izq'),desc:'14',alt:'45',largo:''}:f.copetes[i];
   const pr=modal({title:i==null?'Añadir copete':'Copete C'+(i+1),fields:[
     {label:'Lado del copete',sel:[['izq','Izquierda'],['dcha','Derecha'],['no','Ninguno']],value:c.lado},
-    {label:'Descuento (mm) — 12 grosor del frente + 2 holgura cemento cola',value:c.desc,num:true,ph:'14'},
-    {label:'Altura del copete (mm)',value:c.alt,num:true,ph:'45'},
+    {label:'Descuento (mm)',value:c.desc,num:true,ph:'14'},
+    {label:'Altura (mm)',value:c.alt,num:true,ph:'45'},
     {label:'Medida de la pared en obra (mm) — el copete medirá esto menos el descuento',value:c.largo,num:true,ph:'p. ej. 620'}],
     buttons:i==null?[{label:'Cancelar',v:null},{label:'Añadir',v:'ok',pri:true}]:[{label:'Borrar',v:'del',dang:true},{label:'Cancelar',v:null},{label:'Guardar',v:'ok',pri:true}]});
+  // Descuento y altura en la misma línea
+  {const fl=[...$('#mbox').querySelectorAll('.fld')];if(fl[1]&&fl[2]){const w=document.createElement('div');w.className='grid2';fl[1].before(w);w.append(fl[1],fl[2]);
+    w.insertAdjacentHTML('afterend','<div class="note" style="margin:-4px 0 10px">Descuento: 12 de grosor del frente + 2 de holgura del cemento cola.</div>');}}
   encDictUI('copete',CSTEPS);
   const r=await pr;encDictStop();
   if(!r.v)return;
