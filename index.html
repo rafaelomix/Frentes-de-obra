@@ -128,6 +128,7 @@ function parseSpoken(t){
   if(/\b(parar|para|stop|terminar|termina|fin|salir)\b/.test(t))return{cmd:'stop'};
   if(/\b(atras|anterior|volver|repetir|repite)\b/.test(t))return{cmd:'back'};
   if(/\b(siguiente|saltar|salta|igual|misma|mismo|vale|ok)\b/.test(t))return{cmd:'next'};
+  t=soloNumeros(t);if(!t)return{noise:true};
   let half=0;if(/\by medio\b/.test(t)){half=0.5;t=t.replace(/\by medio\b/,' ');}
   t=t.replace(/(\d)\s*,\s*(\d)/g,'$1.$2').replace(/\s+(coma|punto|con)\s+/g,' . ').replace(/\b(centimetros?|cm|milimetros?|mm|metros?)\b/g,' ');
   t=t.replace(/(\d)\s*\.\s*(\d)/g,'$1.$2').replace(/\s+/g,' ').trim();
@@ -142,6 +143,11 @@ function parseSpoken(t){
 // Modo obra: metros + centímetros (+ "con X" o "y medio" = milímetros). Devuelve mm.
 // "uno cincuenta y siete con cinco" = 1575 · "dos treinta y tres" = 2330 · "157" = 1570
 function pegados(t){t=t.replace(/(\d)[.,](\d)/g,'$1\u00a7$2').replace(/[.,;:]/g,' ').replace(/\u00a7/g,',');return t.replace(/(inta|enta)y(?=[a-z])/g,'$1 y ').replace(/(\S)ymedio\b/g,'$1 y medio').replace(/\bymedio\b/g,'y medio');}
+// Quita muletillas y todo lo que no sea parte de un número ("mmm", "eh", "a ver"...)
+const KEEPW=new Set(['y','con','medio','coma','punto','mil']);
+function soloNumeros(t){
+  return t.split(/\s+/).filter(w=>w&&(/^\d+([.,]\d+)?$/.test(w)||w in NUMW||KEEPW.has(w)||segment(w))).join(' ');
+}
 function segment(w){ // separa números pegados: "unosetentaytres" -> uno setenta y tres
   const keys=Object.keys(NUMW).concat(['y']);const memo={};
   const go=i=>{if(i===w.length)return[];if(i in memo)return memo[i];memo[i]=null;
@@ -169,6 +175,7 @@ function groupNums(ws){
 function parseObra(t){
   t=pegados(String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[¿?¡!]/g,' '))
     .replace(/\b(centimetros?|cm|milimetros?|mm|metros?|m)\b/g,' ').replace(/\s+/g,' ').trim();
+  t=soloNumeros(t);if(!t)return{noise:true};
   let extra=0;
   if(/\by medio\b/.test(t)){extra+=5;t=t.replace(/\by medio\b/,' ').trim();}
   const parts=t.split(/\bcon\b/);let main=parts[0].trim();
@@ -963,7 +970,7 @@ function orderEditor(){
 let dictUnit=LS.get('fc_du','obra'),Dict=null;
 const UNITTXT={obra:'metros y centímetros (ej.: «uno cincuenta y siete con cinco»)',cm:'cm',mm:'mm'};
 function parseMeasure(t){
-  const c=parseSpoken(t);if(c&&c.cmd)return c;
+  const c=parseSpoken(t);if(c&&(c.cmd||c.noise))return c;
   if(dictUnit==='obra')return parseObra(t);
   if(c&&c.num!=null)return{mm:c.num*(dictUnit==='cm'?10:1)};
   return null;
@@ -1008,7 +1015,7 @@ function dictListen(){
     const r=new SRec();r.lang='es-ES';r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
     Dict.col=Dict.col||{};
     r.onstart=()=>{if(Dict&&Dict.col){Dict.col.done=new Set();Dict.col.consumed='';}};
-    r.onresult=collector(Dict.col,t=>{if(!Dict)return;const q=parseMeasure(t);if(q)dictApply(q,t);else{Dict.heard='No he entendido: «'+t+'»';dictBanner();}},
+    r.onresult=collector(Dict.col,t=>{if(!Dict)return;const q=parseMeasure(t);if(q&&q.noise){Dict.heard='';dictBanner();return;}if(q)dictApply(q,t);else{Dict.heard='No he entendido: «'+t+'»';dictBanner();}},
       t=>{if(!Dict)return;Dict.heard='🗣 '+t+' …';dictBanner();});
     r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Sin permiso para el micrófono');dictStop();}};
     r.onend=()=>{if(Dict&&Dict.rec===r){setTimeout(()=>{if(Dict&&Dict.rec===r){try{r.start();}catch(err){Dict.heard='Pulsa 🎤 Seguir para continuar';Dict.paused=true;dictBanner();}}},150);}};
@@ -1105,7 +1112,7 @@ function encDictApply(raw){
   if(!st)return false;
   if(q&&q.cmd==='next'){encDictNext();return true;}
   const el=ED.els[st.i];
-  if(st.num){if(!q||q.mm==null)return false;el.value=String(Math.round(q.mm*10)/10);}
+  if(st.num){if(q&&q.noise){encDictShow('');return true;}if(!q||q.mm==null)return false;el.value=String(Math.round(q.mm*10)/10);}
   else{const v=st.w(t);if(v==null)return false;el.value=v;}
   try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}
   encDictNext();return true;
