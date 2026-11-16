@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prueba láser Bluetooth</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:#f4f5f7;color:#222}
+h1{font-size:20px;margin:0 0 12px}
+button{font-size:18px;padding:12px 18px;border:0;border-radius:10px;background:#0a66c2;color:#fff;margin:4px 6px 4px 0}
+button.sec{background:#666}
+#estado{margin:12px 0;padding:10px;border-radius:8px;background:#fff;border:1px solid #ddd}
+.campos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.campos label{font-size:14px;display:block}
+.campos input{width:100%;box-sizing:border-box;font-size:22px;padding:8px;border:2px solid #ccc;border-radius:8px}
+.campos input.activo{border-color:#0a66c2;background:#eef5ff}
+#ultima{font-size:42px;font-weight:700;text-align:center;margin:10px 0}
+#raw{font-family:monospace;font-size:12px;background:#111;color:#0f0;padding:8px;border-radius:8px;height:180px;overflow:auto;white-space:pre-wrap}
+</style></head><body>
+<h1>Prueba láser Bluetooth (Bosch GLM / Leica DISTO)</h1>
+<button id="btnCon">Conectar láser</button>
+<button id="btnDes" class="sec">Desconectar</button>
+<button id="btnLimpiar" class="sec">Limpiar</button>
+<div id="estado">Pulsa «Conectar láser».</div>
+<div id="ultima">— mm</div>
+<p>Toca una casilla para elegir dónde cae la medida. Tras cada medida salta sola a la siguiente.</p>
+<div class="campos">
+ <div><label>Izqda arriba</label><input inputmode="numeric"></div>
+ <div><label>Dcha arriba</label><input inputmode="numeric"></div>
+ <div><label>Izqda abajo</label><input inputmode="numeric"></div>
+ <div><label>Dcha abajo</label><input inputmode="numeric"></div>
+ <div><label>Izqda techo</label><input inputmode="numeric"></div>
+ <div><label>Dcha techo</label><input inputmode="numeric"></div>
+ <div><label>Izqda mueble</label><input inputmode="numeric"></div>
+ <div><label>Dcha mueble</label><input inputmode="numeric"></div>
+</div>
+<p><b>Diagnóstico</b> (datos crudos que envía el láser; si no salen medidas, mándame una captura de esto):</p>
+<div id="raw"></div>
+<script>
+/*
+ * laser.js — Conexión de medidores láser por Bluetooth (Web Bluetooth)
+ * Soporta: Bosch GLM 50 C (y otros GLM "C") y Leica DISTO con Bluetooth Smart.
+ * Funciona en Chrome Android / Chrome-Edge escritorio y en Bluefy (iPad/iPhone).
+ *
+ * Uso:
+ *   Laser.onMedida = (mm) => { ... };      // medida en milímetros
+ *   Laser.onEstado = (texto) => { ... };   // mensajes de estado
+ *   Laser.onRaw    = (hex) => { ... };     // datos crudos (diagnóstico)
+ *   Laser.conectar();                      // llamar desde un clic de botón
+ *   Laser.desconectar();
+ */
+(function (global) {
+  'use strict';
+
+  const BOSCH_SERVICE = '02a6c0d0-0451-4000-b000-fb3210111989';
+  const BOSCH_CHAR    = '02a6c0d1-0451-4000-b000-fb3210111989';
+  // Activa el envío automático de cada medida al pulsar el botón del láser
+  const BOSCH_AUTOSYNC = new Uint8Array([0xC0, 0x55, 0x02, 0x01, 0x00, 0x1A]);
+
+  const LEICA_SERVICE = '3ab10100-f831-4395-b29d-570977d5bf94';
+  const LEICA_DIST    = '3ab10101-f831-4395-b29d-570977d5bf94';
+
+  const Laser = {
+    onMedida: null,
+    onEstado: null,
+    onRaw: null,
+    device: null,
+    marca: null,
+    _ultima: { mm: null, t: 0 },
+
+    soportado() {
+      return !!(navigator.bluetooth && navigator.bluetooth.requestDevice);
+    },
+
+    _estado(t) { if (this.onEstado) this.onEstado(t); },
+
+    _hex(dv) {
+      const a = [];
+      for (let i = 0; i < dv.byteLength; i++) a.push(dv.getUint8(i).toString(16).padStart(2, '0'));
+      return a.join(' ');
+    },
+
+    _emitir(metros) {
+      if (!isFinite(metros) || metros <= 0.01 || metros > 250) return;
+      const mm = Math.round(metros * 1000);
+      // Evita duplicados (algunos láser repiten el paquete)
+      const ahora = Date.now();
+      if (mm === this._ultima.mm && ahora - this._ultima.t < 700) return;
+      this._ultima = { mm, t: ahora };
+      if (this.onMedida) this.onMedida(mm);
+    },
+
+    async conectar() {
+      if (!this.soportado()) {
+        this._estado('Este navegador no tiene Bluetooth web. En Android usa Chrome; en iPad usa Bluefy.');
+        return false;
+      }
+      try {
+        this._estado('Buscando láser…');
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [
+            { services: [BOSCH_SERVICE] },
+            { services: [LEICA_SERVICE] },
+            { namePrefix: 'GLM' },
+            { namePrefix: 'DISTO' }
+          ],
+          optionalServices: [BOSCH_SERVICE, LEICA_SERVICE]
+        });
+        this.device = device;
+        device.addEventListener('gattserverdisconnected', () => {
+          this._estado('Láser desconectado');
+        });
+        this._estado('Conectando a ' + (device.name || 'láser') + '…');
+        const server = await device.gatt.connect();
+
+        // ¿Bosch?
+        try {
+          const srv = await server.getPrimaryService(BOSCH_SERVICE);
+          const ch = await srv.getCharacteristic(BOSCH_CHAR);
+          await ch.startNotifications();
+          ch.addEventListener('characteristicvaluechanged', (e) => this._bosch(e.target.value));
+          await ch.writeValue(BOSCH_AUTOSYNC);
+          this.marca = 'Bosch';
+          this._estado('Conectado: ' + (device.name || 'Bosch GLM') + '. Pulsa el botón de medir del láser.');
+          return true;
+        } catch (e) { /* no es Bosch */ }
+
+        // ¿Leica?
+        try {
+          const srv = await server.getPrimaryService(LEICA_SERVICE);
+          const ch = await srv.getCharacteristic(LEICA_DIST);
+          await ch.startNotifications();
+          ch.addEventListener('characteristicvaluechanged', (e) => {
+            const dv = e.target.value;
+            if (this.onRaw) this.onRaw(this._hex(dv));
+            if (dv.byteLength >= 4) this._emitir(dv.getFloat32(0, true));
+          });
+          this.marca = 'Leica';
+          this._estado('Conectado: ' + (device.name || 'Leica DISTO') + '. Pulsa el botón de medir del láser.');
+          return true;
+        } catch (e) { /* no es Leica */ }
+
+        this._estado('Conectado, pero no reconozco el modelo del láser.');
+        return false;
+      } catch (err) {
+        if (err && err.name === 'NotFoundError') this._estado('No se eligió ningún láser.');
+        else this._estado('Error: ' + (err && err.message ? err.message : err));
+        return false;
+      }
+    },
+
+    _bosch(dv) {
+      if (this.onRaw) this.onRaw(this._hex(dv));
+      const n = dv.byteLength;
+      // Formato habitual: C0 55 10 06 ... con la distancia (float32, metros) en el byte 7
+      if (n >= 11 && dv.getUint8(0) === 0xC0 && dv.getUint8(1) === 0x55 && dv.getUint8(2) === 0x10) {
+        const m = dv.getFloat32(7, true);
+        if (m > 0.01 && m < 250) { this._emitir(m); return; }
+      }
+      // Respuesta a otras órdenes (C0 55 02 …, 00 00 …): no es una medida
+    },
+
+    desconectar() {
+      if (this.device && this.device.gatt.connected) this.device.gatt.disconnect();
+    }
+  };
+
+  global.Laser = Laser;
+})(window);
+
+const inputs=[...document.querySelectorAll('.campos input')];
+let idx=0;
+function marcar(){inputs.forEach((x,i)=>x.classList.toggle('activo',i===idx));}
+inputs.forEach((x,i)=>x.addEventListener('focus',()=>{idx=i;marcar();}));
+marcar();
+const raw=document.getElementById('raw');
+function log(t){const h=new Date().toLocaleTimeString();raw.textContent+=h+'  '+t+'\n';raw.scrollTop=raw.scrollHeight;}
+Laser.onEstado=t=>{document.getElementById('estado').textContent=t;log('# '+t);};
+Laser.onRaw=hex=>log(hex);
+Laser.onMedida=mm=>{
+  document.getElementById('ultima').textContent=mm+' mm';
+  log('=> MEDIDA '+mm+' mm');
+  inputs[idx].value=mm;
+  idx=(idx+1)%inputs.length;marcar();
+  if(navigator.vibrate)navigator.vibrate(80);
+};
+document.getElementById('btnCon').onclick=()=>Laser.conectar();
+document.getElementById('btnDes').onclick=()=>Laser.desconectar();
+document.getElementById('btnLimpiar').onclick=()=>{inputs.forEach(x=>x.value='');idx=0;marcar();raw.textContent='';document.getElementById('ultima').textContent='— mm';};
+if(!Laser.soportado())Laser.onEstado('Este navegador no tiene Bluetooth web. En Android usa Chrome; en iPad usa Bluefy.');
+</script>
+</body></html>
