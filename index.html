@@ -746,12 +746,13 @@ function renderHome(app){
     `<button class="btn pri full" data-act="newPromo">+ Nueva promoción</button>
      ${Store.mode==='gs'?`<h2>Sincronización</h2><div class="card"><div class="note" id="syncinfo">${esc(syncInfo())}</div>
        <div class="grid2" style="margin-top:10px"><button class="btn sm" data-act="syncNow">Sincronizar ahora</button><button class="btn sm dang" data-act="logout">Cerrar sesión</button></div></div>`:''}
-     <h2>Copia de seguridad</h2>
+     <div class="card" style="margin-top:12px">${foldHead('copia','Copia de seguridad')}<div class="${foldCls('copia')}" data-foldc="copia" style="margin-top:8px">
      <label class="chk"><input type="checkbox" id="incFotos" ${incFotos?'checked':''}> Incluir fotos</label>
      <p class="note" style="margin:-4px 2px 10px">Sin fotos la copia pesa muy poco. Al importar sin fotos se conservan las fotos que ya tengas en este dispositivo.</p>
      ${mailChk()}
      <div class="grid2"><button class="btn" data-act="exportAll">Exportar copia</button><button class="btn" data-act="importAll">Importar copia</button></div>
      ${inClaude?'':`<div style="margin-top:8px">${mailBtn('exportAll','Enviar copia por correo').replace('class="btn"','class="btn full"')}</div>`}
+     </div></div>
      <p class="note" style="margin-top:14px">Cómo medir: láser en cruz sobre la encimera. Desde la línea vertical se mide a la pared izquierda y derecha, arriba y abajo. Desde la línea horizontal, en el lado izquierdo y en el derecho, se mide hasta el techo (o mueble alto) y hasta el mueble de abajo. Todas las medidas en mm.</p>`;
 }
 
@@ -764,23 +765,22 @@ function renderPromo(app){
    <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
    <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div>
-  <div class="card"><div style="font-weight:600;margin-bottom:8px">Descuentos sobre la medida (mm)</div>
+  <div class="card">${foldHead('pdesc','Descuentos sobre la medida (mm)')}<div class="${foldCls('pdesc')}" data-foldc="pdesc" style="margin-top:8px">
    <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-cut="${k}" value="${esc(fmt(p.cuts[k]))}"></label>`).join('')}</div>
    <div style="font-weight:600;margin:12px 0 8px">Enchufes (mm)</div>
-   <div class="grid2"><label class="note">Ø agujero<input class="in" inputmode="decimal" data-pset="dia" value="${esc(fmt(num(p.dia)||68))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-pset="sep" value="${esc(fmt(num(p.sep)||70))}"></label></div></div>
+   <div class="grid2"><label class="note">Ø agujero<input class="in" inputmode="decimal" data-pset="dia" value="${esc(fmt(num(p.dia)||68))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-pset="sep" value="${esc(fmt(num(p.sep)||70))}"></label></div></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     return `<button class="item" data-act="openPiso" data-id="${pi.id}"><div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Sin pisos todavía.</div>`)+
   `<button class="btn pri full" data-act="newPiso">+ Añadir piso</button>
-   <h2>Exportar</h2>
-   ${mailChk()}
+   <div class="card" style="margin-top:12px">${foldHead('pexp','Exportar')}<div class="${foldCls('pexp')}" data-foldc="pexp" style="margin-top:8px">
    <div style="font-weight:600;margin:0 2px 6px">Todos los DXF de los pisos</div>
    <div class="grid2"><button class="btn pri" data-act="dxfAllPisos">⬇ Descargar</button>${mailBtn('dxfAllPisos')}</div>
    <p class="note" style="margin:4px 2px 10px">Un archivo DXF por cada piso, todos juntos.</p>
    <div style="font-weight:600;margin:0 2px 6px">DXF + fotos anotadas</div>
    <div class="grid2"><button class="btn" data-act="dxfPromo">⬇ Descargar</button>${mailBtn('dxfPromo')}</div>
-   <p class="note" style="margin:4px 2px 0">Lo mismo, más un DXF con todos los pisos y las fotos anotadas.</p>
+   <p class="note" style="margin:4px 2px 0">Lo mismo, más un DXF con todos los pisos y las fotos anotadas.</p></div></div>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPromo">Borrar promoción</button>`;
   app.querySelectorAll('[data-pset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0){p[i.dataset.pset]=v;Store.save(p);}});
   const lt=$('#locTxt');if(lt)lt.onchange=()=>{p.loc={...(p.loc||{}),txt:lt.value.trim()};Store.save(p);};
