@@ -51,6 +51,7 @@ input.in.miss{background:#fff7ed;border-color:#fdba74}
 .mg .col{display:flex;flex-direction:column;gap:8px}
 .mg svg{width:100%;height:auto}
 .cvwrap{position:relative;border-radius:10px;overflow:hidden;background:#000;margin-bottom:10px}
+#cv{transform-origin:0 0;display:block}
 canvas{display:block;width:100%;height:auto}
 .tools{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
 .tools .btn{flex:1}
@@ -423,8 +424,15 @@ const inClaude=typeof window.claude!=='undefined'&&window.claude&&typeof window.
 
 let S={promos:[]};
 let route={v:'home'};
-let mode='med'; // med | laser | nota
-let drawColor='#ef4444',drawW=4;try{drawColor=localStorage.getItem('fc_dc')||drawColor;drawW=+(localStorage.getItem('fc_dw')||4);}catch(e){}
+let mode='med'; // med | laser | cotas | nota | draw
+let drawTool='pen';            // pen | goma
+let VIEW={z:1,tx:0,ty:0};      // zoom de la foto (dos dedos)
+const UNDO={id:null,st:[]};    // deshacer: dibujo, cotas y cruce del láser
+function undoPush(){const f=F();if(!f)return;if(UNDO.id!==f.id){UNDO.id=f.id;UNDO.st=[];}
+  UNDO.st.push(JSON.stringify({draw:f.draw||[],cp:f.cp||{},cx:f.cx,cy:f.cy}));if(UNDO.st.length>60)UNDO.st.shift();}
+function undoDo(){const f=F();if(!f||UNDO.id!==f.id||!UNDO.st.length){toast('Nada que deshacer');return;}
+  const o=JSON.parse(UNDO.st.pop());f.draw=o.draw;f.cp=o.cp;f.cx=o.cx;f.cy=o.cy;Store.save(P());drawCanvas();}
+let drawColor='#ef4444',drawW=3;try{drawColor=localStorage.getItem('fc_dc')||drawColor;drawW=+(localStorage.getItem('fc_dw')||3);if(![1.5,3,7].includes(drawW))drawW=3;}catch(e){}
 let sendMail=true,mailTo='';try{sendMail=localStorage.getItem('fc_mail')!=='0';mailTo=localStorage.getItem('fc_mailto')||'';}catch(e){}
 let incFotos=true;try{incFotos=localStorage.getItem('fc_incFotos')!=='0';}catch(e){}
 
@@ -692,7 +700,7 @@ const P=()=>S.promos.find(p=>p.id===route.p);
 const PI=()=>{const p=P();return p&&p.pisos.find(x=>x.id===route.pi);};
 const F=()=>{const pi=PI();return pi&&pi.frentes.find(x=>x.id===route.f);};
 function filled(f){return KEYS.filter(k=>num(f.m[k])!=null).length;}
-function go(r){dictStop();if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='med';render();window.scrollTo(0,0);}
+function go(r){dictStop();VIEW={z:1,tx:0,ty:0};if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='med';render();window.scrollTo(0,0);}
 
 function fileBtn(label,cls,kind){
   const acc=kind==='imp'?'.json,application/json':'image/*',cap=kind.startsWith('cam')?' capture="environment"':'';
@@ -798,11 +806,14 @@ function renderFrente(app){
   $('#ttl').textContent=pi.title+' · '+name;
   const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}<span style="display:flex;align-items:center;gap:5px"><input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"><span style="display:flex;flex-direction:column;align-items:center;gap:2px"><span class="ordn" data-ord="${k}">${ordBadge(k)}</span><button type="button" class="cpb" data-cp="${k}" title="Calcar de ${esc(KLAB[PAIRK[k]])}">${/^(lt|lb|rt|rb)$/.test(k)?'⇅':'⇄'}</button></span></span></label>`;
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>${esc(name)}</b><button class="btn sm" data-act="renFrente">Renombrar</button></div></div>`+
-  (f.photo?`<div class="tools"><button class="btn sm ${mode==='med'?'on':''}" data-act="mode" data-m="med">Medidas</button><button class="btn sm ${mode==='laser'?'on':''}" data-act="mode" data-m="laser">Mover láser</button><button class="btn sm ${mode==='nota'?'on':''}" data-act="mode" data-m="nota">Nota</button><button class="btn sm ${mode==='draw'?'on':''}" data-act="mode" data-m="draw">✏️ Dibujar</button><button class="btn sm pri" data-act="dictStart">🎤 Dictar</button></div>
+  (f.photo?`<div class="tools"><button class="btn sm ${mode==='med'?'on':''}" data-act="mode" data-m="med">Medidas</button><button class="btn sm ${mode==='laser'?'on':''}" data-act="mode" data-m="laser">Mover láser</button><button class="btn sm ${mode==='cotas'?'on':''}" data-act="mode" data-m="cotas">↔ Mover cotas</button><button class="btn sm ${mode==='nota'?'on':''}" data-act="mode" data-m="nota">Nota</button><button class="btn sm ${mode==='draw'?'on':''}" data-act="mode" data-m="draw">✏️ Dibujar</button><button class="btn sm pri" data-act="dictStart">🎤 Dictar</button></div>
    ${mode==='draw'?`<div class="dtools">${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
-     <button class="btn sm ${drawW===4?'on':''}" data-act="dw" data-w="4">Fino</button><button class="btn sm ${drawW===9?'on':''}" data-act="dw" data-w="9">Grueso</button>
+     ${[[1.5,'Muy fino'],[3,'Fino'],[7,'Grueso']].map(([w,t])=>`<button class="btn sm ${drawTool==='pen'&&drawW===w?'on':''}" data-act="dw" data-w="${w}">${t}</button>`).join('')}
+     <button class="btn sm ${drawTool==='goma'?'on':''}" data-act="dgoma">🧽 Goma</button>
      <button class="btn sm" data-act="dundo">↶ Deshacer</button><button class="btn sm dang" data-act="dclear">Borrar dibujo</button></div>`:''}
-   <p class="hint">${mode==='med'?(Dict?'Dictando: toca una cifra de la foto para saltar a esa medida.':'Toca una cifra de la foto para escribir la medida, o pulsa 🎤 Dictar.'):mode==='laser'?'Toca o arrastra sobre la foto para poner el cruce del láser.':mode==='draw'?'Pinta sobre la foto con el lápiz o el dedo. Si usas el Apple Pencil, el dedo no pinta (así puedes apoyar la mano).':'Toca la foto para añadir una nota; toca una nota para editarla.'}</p>
+   ${mode==='cotas'||mode==='laser'?`<div class="dtools"><button class="btn sm" data-act="dundo">↶ Deshacer</button>${mode==='cotas'?'<button class="btn sm" data-act="cotasReset">Colocar cotas por defecto</button>':''}</div>`:''}
+   ${VIEW.z>1.01?'<div class="dtools"><button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button></div>':''}
+   <p class="hint">${mode==='med'?(Dict?'Dictando: toca una cifra de la foto para saltar a esa medida.':'Toca una cifra de la foto para escribir la medida, o pulsa 🎤 Dictar.'):mode==='laser'?'Toca o arrastra sobre la foto para poner el cruce del láser.':mode==='draw'?(drawTool==='goma'?'Goma: toca o arrastra sobre un trazo para borrarlo. Con dos dedos acercas o alejas.':'Pinta sobre la foto con el lápiz o el dedo. Con dos dedos acercas o alejas. Si usas el Apple Pencil, el dedo no pinta (así puedes apoyar la mano).'):mode==='cotas'?'Arrastra la cifra para mover la cota (paralela) y arrastra la punta de la flecha para llevarla hasta la pared, techo o mueble de la foto. El otro extremo sale siempre del rayo.':'Toca la foto para añadir una nota; toca una nota para editarla.'}</p>
    <div class="cvwrap"><canvas id="cv"></canvas></div>
    <div class="grid2" style="margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
@@ -883,10 +894,15 @@ function renderPrev(){
 
 // ---------- Foto anotada ----------
 let hits=[],curImg=null;
+// Cotas: cada flecha sale del rayo. f.cp[k]={o,e}: o = posición paralela, e = punta (fracciones de la foto)
+const HORIZ={lt:1,lb:1,rt:1,rb:1};
 function arrowsFor(f,W,H){
-  const X=f.cx*W,Y=f.cy*H,ya=Y*0.4,yb=Y+(H-Y)*0.6,xl=X*0.15,xr=X+(W-X)*0.85;
-  return{lt:[[X,ya],[W*0.02,ya]],lb:[[X,yb],[W*0.02,yb]],rt:[[X,ya],[W*0.98,ya]],rb:[[X,yb],[W*0.98,yb]],
-    ul:[[xl,Y],[xl,H*0.02]],dl:[[xl,Y],[xl,H*0.98]],ur:[[xr,Y],[xr,H*0.02]],dr:[[xr,Y],[xr,H*0.98]]};
+  const X=f.cx*W,Y=f.cy*H,ya=Y*0.4,yb=Y+(H-Y)*0.6,xl=X*0.15,xr=X+(W-X)*0.85,cp=f.cp||{};
+  const def={lt:[ya/H,0.02],lb:[yb/H,0.02],rt:[ya/H,0.98],rb:[yb/H,0.98],ul:[xl/W,0.02],dl:[xl/W,0.98],ur:[xr/W,0.02],dr:[xr/W,0.98]};
+  const o={};
+  for(const k in def){const c=cp[k]||{},oo=c.o!=null?c.o:def[k][0],ee=c.e!=null?c.e:def[k][1];
+    o[k]=HORIZ[k]?[[X,oo*H],[ee*W,oo*H]]:[[oo*W,Y],[oo*W,ee*H]];}
+  return o;
 }
 function drawAnnot(ctx,img,W,H,f,collect){
   const out=[];ctx.clearRect(0,0,W,H);ctx.drawImage(img,0,0,W,H);
@@ -933,21 +949,50 @@ async function setupCanvas(){
   const f=F(),cv=$('#cv');if(!cv)return;
   curImg=await getImg(f.photo);
   if(!curImg){cv.parentElement.innerHTML='<div class="empty" style="color:#fff">No se pudo cargar la foto.</div>';return;}
-  drawCanvas();
-  cv.style.touchAction=(mode==='laser'||mode==='draw')?'none':'manipulation';
-  let drag=false,stroke=null,penSeen=false,lastPt=null;
+  drawCanvas();applyView();
+  cv.style.touchAction=(mode==='laser'||mode==='draw'||mode==='cotas')?'none':'manipulation';
+  let drag=false,stroke=null,penSeen=false,lastPt=null,cdrag=null,erasing=false,erased=false;
+  const touches=new Map();let pinch=null,pan=null;
   const pos=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height];};
+  const S=()=>Math.max(cv.width,cv.height)/900;
   const setCross=([x,y])=>{const f=F();f.cx=Math.min(.98,Math.max(.02,x/cv.width));f.cy=Math.min(.98,Math.max(.02,y/cv.height));drawCanvas();};
+  const wrapPt=e=>{const r=cv.parentElement.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];};
+  // Al poner el segundo dedo se anula lo que hizo el primero (trazo, goma, cota o láser)
+  const cancelStroke=()=>{if((stroke||drag||cdrag||erasing)&&UNDO.st.length){const f=F(),o=JSON.parse(UNDO.st.pop());f.draw=o.draw;f.cp=o.cp;f.cx=o.cx;f.cy=o.cy;drawCanvas();}
+    stroke=null;lastPt=null;cdrag=null;erasing=false;drag=false;};
+  const eraseAt=pt=>{const f=F(),W=cv.width,H=cv.height,s=S();let hit=false;
+    f.draw=(f.draw||[]).filter(st=>{const p=st.p,tol=14*s+st.w*s/2;
+      for(let i=0;i+1<p.length;i+=2){const x1=p[i]/1000*W,y1=p[i+1]/1000*H,x2=(i+3<p.length?p[i+2]:p[i])/1000*W,y2=(i+3<p.length?p[i+3]:p[i+1])/1000*H;
+        if(segDist(pt[0],pt[1],x1,y1,x2,y2)<tol){hit=true;return false;}}return true;});
+    if(hit){erased=true;drawCanvas();}};
   cv.onpointerdown=e=>{
+    const zoomable=mode==='laser'||mode==='draw'||mode==='cotas';
+    if(zoomable&&e.pointerType==='touch'){
+      touches.set(e.pointerId,wrapPt(e));
+      if(touches.size===2){cancelStroke();const[p1,p2]=[...touches.values()];
+        pinch={d0:Math.hypot(p2[0]-p1[0],p2[1]-p1[1])||1,m0:[(p1[0]+p2[0])/2,(p1[1]+p2[1])/2],z0:VIEW.z,tx0:VIEW.tx,ty0:VIEW.ty};
+        try{cv.setPointerCapture(e.pointerId);}catch(_){}return;}
+      if(touches.size>2)return;
+      if(mode==='draw'&&penSeen){pan={p0:wrapPt(e),tx0:VIEW.tx,ty0:VIEW.ty};try{cv.setPointerCapture(e.pointerId);}catch(_){}return;}
+    }
     const pt=pos(e);
-    if(mode==='laser'){drag=true;try{cv.setPointerCapture(e.pointerId);}catch(_){}setCross(pt);return;}
+    if(mode==='laser'){undoPush();drag=true;try{cv.setPointerCapture(e.pointerId);}catch(_){}setCross(pt);return;}
+    if(mode==='cotas'){
+      const ar=arrowsFor(F(),cv.width,cv.height),s=S();let k=null,part=null;
+      for(const q of KEYS){const b=ar[q][1];if(Math.hypot(pt[0]-b[0],pt[1]-b[1])<28*s){k=q;part='e';break;}}
+      if(!k){const h=hits.slice().reverse().find(r=>r.k&&pt[0]>=r.x&&pt[0]<=r.x+r.w&&pt[1]>=r.y&&pt[1]<=r.y+r.h);if(h){k=h.k;part='o';}}
+      if(k){undoPush();cdrag={k,part};try{cv.setPointerCapture(e.pointerId);}catch(_){}}
+      return;
+    }
     if(mode==='draw'){
       if(e.pointerType==='pen')penSeen=true;
       if(penSeen&&e.pointerType==='touch')return;
       e.preventDefault();try{cv.setPointerCapture(e.pointerId);}catch(_){}
+      if(drawTool==='goma'){undoPush();erasing=true;erased=false;eraseAt(pt);return;}
+      undoPush();
       const f=F();stroke={c:drawColor,w:drawW,p:[Math.round(pt[0]/cv.width*1000),Math.round(pt[1]/cv.height*1000)]};
       (f.draw=f.draw||[]).push(stroke);lastPt=pt;
-      const ctx=cv.getContext('2d');strokePath(ctx,{...stroke,p:stroke.p.concat(stroke.p)},cv.width,cv.height,Math.max(cv.width,cv.height)/900);
+      const ctx=cv.getContext('2d');strokePath(ctx,{...stroke,p:stroke.p.concat(stroke.p)},cv.width,cv.height,S());
       return;
     }
     const h=hits.slice().reverse().find(r=>pt[0]>=r.x&&pt[0]<=r.x+r.w&&pt[1]>=r.y&&pt[1]<=r.y+r.h);
@@ -957,20 +1002,43 @@ async function setupCanvas(){
     else if(mode==='nota'){if(h&&h.note!=null)editNote(h.note);else addNote(pt[0]/cv.width,pt[1]/cv.height);}
   };
   cv.onpointermove=e=>{
+    if(touches.has(e.pointerId))touches.set(e.pointerId,wrapPt(e));
+    if(pinch&&touches.size>=2){const[p1,p2]=[...touches.values()];const d=Math.hypot(p2[0]-p1[0],p2[1]-p1[1]),m=[(p1[0]+p2[0])/2,(p1[1]+p2[1])/2];
+      const z=Math.min(6,Math.max(1,pinch.z0*d/pinch.d0));const cx=(pinch.m0[0]-pinch.tx0)/pinch.z0,cy=(pinch.m0[1]-pinch.ty0)/pinch.z0;
+      VIEW={z,tx:m[0]-cx*z,ty:m[1]-cy*z};applyView();return;}
+    if(pan){const p=wrapPt(e);VIEW.tx=pan.tx0+p[0]-pan.p0[0];VIEW.ty=pan.ty0+p[1]-pan.p0[1];applyView();return;}
     if(drag&&mode==='laser'){setCross(pos(e));return;}
+    if(cdrag){const f=F(),pt=pos(e),k=cdrag.k,W=cv.width,H=cv.height;f.cp=f.cp||{};const c=f.cp[k]=f.cp[k]||{};const cl=v=>Math.min(.995,Math.max(.005,v));
+      if(cdrag.part==='o')c.o=HORIZ[k]?cl(pt[1]/H):cl(pt[0]/W);
+      else c.e=HORIZ[k]?cl(pt[0]/W):cl(pt[1]/H);
+      drawCanvas();return;}
+    if(erasing){eraseAt(pos(e));return;}
     if(stroke&&mode==='draw'){
       const evs=(e.getCoalescedEvents&&e.getCoalescedEvents().length)?e.getCoalescedEvents():[e];
-      const ctx=cv.getContext('2d'),sc=Math.max(cv.width,cv.height)/900,min=2.5*(window.devicePixelRatio||1);
+      const ctx=cv.getContext('2d'),sc=S(),min=1.5*(window.devicePixelRatio||1);
       ctx.save();ctx.strokeStyle=stroke.c;ctx.lineWidth=stroke.w*sc;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(lastPt[0],lastPt[1]);
       for(const ev of evs){const pt=pos(ev);if(Math.hypot(pt[0]-lastPt[0],pt[1]-lastPt[1])<min)continue;
         ctx.lineTo(pt[0],pt[1]);stroke.p.push(Math.round(pt[0]/cv.width*1000),Math.round(pt[1]/cv.height*1000));lastPt=pt;}
       ctx.stroke();ctx.restore();
     }
   };
-  cv.onpointerup=cv.onpointercancel=()=>{
+  cv.onpointerup=cv.onpointercancel=e=>{
+    const wasPinch=!!pinch;
+    if(touches.has(e.pointerId)){touches.delete(e.pointerId);if(touches.size<2&&pinch){pinch=null;render();return;}}
+    if(pan){pan=null;return;}
+    if(wasPinch)return;
     if(drag){drag=false;Store.save(P());}
+    if(cdrag){cdrag=null;Store.save(P());}
+    if(erasing){erasing=false;if(!erased&&UNDO.st.length)UNDO.st.pop();else Store.save(P());}
     if(stroke){stroke=null;lastPt=null;drawCanvas();Store.save(P());}
   };
+}
+function segDist(px,py,x1,y1,x2,y2){const dx=x2-x1,dy=y2-y1,l=dx*dx+dy*dy;let t=l?((px-x1)*dx+(py-y1)*dy)/l:0;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(x1+t*dx),py-(y1+t*dy));}
+function applyView(){
+  const cv=$('#cv');if(!cv)return;const w=cv.parentElement.clientWidth,h=cv.clientHeight;
+  if(VIEW.z<=1.001)VIEW={z:1,tx:0,ty:0};
+  VIEW.tx=Math.min(0,Math.max(w-w*VIEW.z,VIEW.tx));VIEW.ty=Math.min(0,Math.max(h-h*VIEW.z,VIEW.ty));
+  cv.style.transform=VIEW.z>1?`translate(${VIEW.tx}px,${VIEW.ty}px) scale(${VIEW.z})`:'';
 }
 function drawCanvas(){
   const cv=$('#cv'),f=F();if(!cv||!curImg||!f)return;
@@ -1222,6 +1290,16 @@ const CSTEPS=[
   {i:2,t:'Altura del copete',num:true},
   {i:3,t:'Medida de la pared en obra',num:true}
 ];
+// Sustituye un desplegable del formulario por botones grandes
+function bigChoice(sel,opts,onch){
+  sel.style.display='none';const bx=document.createElement('div');
+  bx.style.cssText=`display:grid;grid-template-columns:repeat(${opts.length},1fr);gap:8px`;
+  bx.innerHTML=opts.map(([v,t])=>`<button type="button" class="btn" data-v="${v}" style="padding:14px 4px;font-size:16px;font-weight:700">${t}</button>`).join('');
+  sel.after(bx);
+  const paint=()=>{bx.querySelectorAll('[data-v]').forEach(b=>{const on=b.dataset.v===sel.value;b.classList.toggle('pri',on);b.style.outline=on?'3px solid #fdba74':'';});if(onch)onch(sel.value);};
+  bx.onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;sel.value=b.dataset.v;paint();};
+  sel.addEventListener('change',paint);paint();return bx;
+}
 async function copForm(i){
   const p=P(),f=F();f.copetes=f.copetes||[];
   const c=i==null?{lado:(f.copetes.some(x=>x.lado==='izq')?'dcha':'izq'),aj:'-14',alt:'45',largo:''}:f.copetes[i];
@@ -1274,6 +1352,12 @@ async function encForm(i){
     {label:'Tipo',sel:[['1','Sencillo'],['2','Doble'],['3','Triple'],['4','Cuádruple']],value:String(e.n||1)},
     {label:'Disposición (doble, triple o cuádruple)',sel:[['h','Horizontal'],['v','Vertical']],value:e.ori||'h'}],
     buttons:i==null?[{label:'Cancelar',v:null},{label:'Añadir',v:'ok',pri:true}]:[{label:'Borrar',v:'del',dang:true},{label:'Cancelar',v:null},{label:'Guardar',v:'ok',pri:true}]});
+  {const fl=[...$('#mbox').querySelectorAll('.fld')],sT=fl[4]&&fl[4].querySelector('select'),sD=fl[5]&&fl[5].querySelector('select');
+    const sL=fl[0]&&fl[0].querySelector('select'),sV=fl[2]&&fl[2].querySelector('select');
+    if(sL)bigChoice(sL,[['izq','⬅ Izquierda'],['dcha','Derecha ➡']]);
+    if(sV)bigChoice(sV,[['arriba','⬆ Por encima'],['abajo','⬇ Por debajo']]);
+    if(sT&&sD){bigChoice(sD,[['h','↔ Horizontal'],['v','↕ Vertical']]);
+      bigChoice(sT,[['1','Sencillo'],['2','Doble'],['3','Triple'],['4','Cuádruple']],v=>{fl[5].style.display=v==='1'?'none':'';});}}
   encDictUI();
   const r=await pr;encDictStop();
   if(!r.v)return;
@@ -1605,9 +1689,12 @@ const A={
   addEnc(){encForm(null);},
   editEnc(d){encForm(+d.i);},
   dcol(d){drawColor=d.c;try{localStorage.setItem('fc_dc',drawColor);}catch(e){}render();},
-  dw(d){drawW=+d.w;try{localStorage.setItem('fc_dw',String(drawW));}catch(e){}render();},
-  dundo(){const f=F();if(f.draw&&f.draw.length){f.draw.pop();Store.save(P());drawCanvas();}},
-  async dclear(){const f=F();if(!f.draw||!f.draw.length)return;if(!await confirmDel('todo el dibujo de esta foto'))return;f.draw=[];Store.save(P());drawCanvas();},
+  dgoma(){drawTool=drawTool==='goma'?'pen':'goma';render();},
+  cotasReset(){const f=F();undoPush();f.cp={};Store.save(P());drawCanvas();},
+  zoomReset(){VIEW={z:1,tx:0,ty:0};render();},
+  dw(d){drawTool='pen';drawW=+d.w;try{localStorage.setItem('fc_dw',String(drawW));}catch(e){}render();},
+  dundo(){undoDo();},
+  async dclear(){const f=F();if(!f.draw||!f.draw.length)return;if(!await confirmDel('todo el dibujo de esta foto'))return;undoPush();f.draw=[];Store.save(P());drawCanvas();},
   async dxfFrente(){const p=P(),pi=PI(),f=F();if(!geom(f,p.cuts)){toast('Faltan medidas');return;}
     const one={...pi,frentes:[f]},nm=safe(pi.title)+' - '+safe(f.name||'Frente '+(pi.frentes.indexOf(f)+1));
     const files=[{name:nm+'.dxf',data:buildDXF(p,[one])}];
