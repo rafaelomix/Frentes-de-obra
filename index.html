@@ -52,6 +52,9 @@ input.in.miss{background:#fff7ed;border-color:#fdba74}
 .mg svg{width:100%;height:auto}
 .cvwrap{position:relative;border-radius:10px;overflow:hidden;background:#000;margin-bottom:10px}
 #cv{transform-origin:0 0;display:block}
+.fold{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:0;padding:0;font:inherit;font-weight:600;color:inherit;text-align:left;cursor:pointer}
+.fold .chev2{font-size:18px;color:#6b7280;transition:transform .15s}.fold.closed .chev2{transform:rotate(-90deg)}
+.foldc.closed{display:none}
 canvas{display:block;width:100%;height:auto}
 .tools{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
 .tools .btn{flex:1}
@@ -425,7 +428,13 @@ const inClaude=typeof window.claude!=='undefined'&&window.claude&&typeof window.
 let S={promos:[]};
 let route={v:'home'};
 let mode='draw'; // la foto solo sirve para dibujar
-let drawTool='pen';            // pen | goma
+let drawTool='mover';          // mover | pen | goma | nota
+const FOLD={};try{Object.assign(FOLD,JSON.parse(localStorage.getItem('fc_fold')||'{}'));}catch(e){}
+function foldHead(k,title){return `<button type="button" class="fold ${FOLD[k]?'closed':''}" data-fold="${k}"><span>${title}</span><span class="chev2">▾</span></button>`;}
+function foldCls(k){return 'foldc'+(FOLD[k]?' closed':'');}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const k=b.dataset.fold;FOLD[k]=!FOLD[k];
+  try{localStorage.setItem('fc_fold',JSON.stringify(FOLD));}catch(_){}
+  b.classList.toggle('closed',!!FOLD[k]);const c=document.querySelector('[data-foldc="'+k+'"]');if(c)c.classList.toggle('closed',!!FOLD[k]);});
 let VIEW={z:1,tx:0,ty:0};      // zoom de la foto (dos dedos)
 const UNDO={id:null,st:[]};    // deshacer: dibujo, cotas y cruce del láser
 function undoPush(){const f=F();if(!f)return;if(UNDO.id!==f.id){UNDO.id=f.id;UNDO.st=[];}
@@ -700,7 +709,7 @@ const P=()=>S.promos.find(p=>p.id===route.p);
 const PI=()=>{const p=P();return p&&p.pisos.find(x=>x.id===route.pi);};
 const F=()=>{const pi=PI();return pi&&pi.frentes.find(x=>x.id===route.f);};
 function filled(f){return KEYS.filter(k=>num(f.m[k])!=null).length;}
-function go(r){dictStop();VIEW={z:1,tx:0,ty:0};if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
+function go(r){dictStop();VIEW={z:1,tx:0,ty:0};drawTool='mover';if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
 
 function fileBtn(label,cls,kind){
   const acc=kind==='imp'?'.json,application/json':'image/*',cap=kind.startsWith('cam')?' capture="environment"':'';
@@ -806,28 +815,28 @@ function renderFrente(app){
   $('#ttl').textContent=pi.title+' · '+name;
   const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}<span style="display:flex;align-items:center;gap:5px"><input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"><span style="display:flex;flex-direction:column;align-items:center;gap:2px"><span class="ordn" data-ord="${k}">${ordBadge(k)}</span><button type="button" class="cpb" data-cp="${k}" title="Calcar de ${esc(KLAB[PAIRK[k]])}">${/^(lt|lb|rt|rb)$/.test(k)?'⇅':'⇄'}</button></span></span></label>`;
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>${esc(name)}</b><button class="btn sm" data-act="renFrente">Renombrar</button></div></div>`+
-  (f.photo?`<div class="dtools">${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor&&drawTool==='pen'?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
+  (f.photo?`<div class="dtools"><button class="btn sm ${drawTool==='mover'?'on':''}" data-act="dmover">✋ Mover</button>${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor&&drawTool==='pen'?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
      ${[[1.5,'Muy fino'],[3,'Fino'],[7,'Grueso']].map(([w,t])=>`<button class="btn sm ${drawTool==='pen'&&drawW===w?'on':''}" data-act="dw" data-w="${w}">${t}</button>`).join('')}
      <button class="btn sm ${drawTool==='goma'?'on':''}" data-act="dgoma">🧽 Goma</button>
      <button class="btn sm ${drawTool==='nota'?'on':''}" data-act="dnota">📝 Nota</button>
      <button class="btn sm" data-act="dundo">↶ Deshacer</button><button class="btn sm dang" data-act="dclear">Borrar dibujo</button>
      ${VIEW.z>1.01?'<button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button>':''}</div>
-   <p class="hint">${drawTool==='goma'?'Goma: toca o arrastra sobre un trazo para borrarlo.':drawTool==='nota'?'Nota: toca la foto para añadir una nota; toca una nota para editarla o borrarla.':'Dibuja sobre la foto con el lápiz o el dedo.'} Con dos dedos acercas o alejas. Si usas el Apple Pencil, el dedo no pinta (sirve para mover la foto ampliada).</p>
+   <p class="hint">${drawTool==='mover'?'Mover: no pinta. Arrastra para moverte por la foto ampliada. Para dibujar, elige un color o un grosor.':drawTool==='goma'?'Goma: toca o arrastra sobre un trazo para borrarlo.':drawTool==='nota'?'Nota: toca la foto para añadir una nota; toca una nota para editarla o borrarla.':'Dibuja sobre la foto con el lápiz o el dedo.'} Con dos dedos acercas o alejas. Si usas el Apple Pencil, el dedo no pinta (sirve para mover la foto ampliada).</p>
    <div class="cvwrap"><canvas id="cv"></canvas></div>
    <div class="grid2" style="margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
-  `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Las casillas del mismo color son pareja. Si miden lo mismo, pulsa el botón pequeño ⇅ / ⇄ al lado de la casilla para calcar la medida de su pareja.</div>
+  `<div class="card">${foldHead('med','Medidas desde el láser (mm)')}<div class="${foldCls('med')}" data-foldc="med" style="margin-top:4px"><div class="note" style="margin-bottom:10px">Las casillas del mismo color son pareja. Si miden lo mismo, pulsa el botón pequeño ⇅ / ⇄ al lado de la casilla para calcar la medida de su pareja.</div>
    <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn sm pri" data-act="dictStart" style="flex:1 1 60%">🎤 Dictar medidas</button><button class="btn sm" data-act="kbStart" style="flex:1 1 30%">⌨ Dictar con teclado</button><button class="btn sm" data-act="orderEdit">⚙ Orden</button>
      <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="obra" ${dictUnit==='obra'?'selected':''}>m y cm</option><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label>
      <label class="note" style="display:flex;align-items:center;gap:6px">espera <select class="in" id="dictPause" style="width:auto;padding:6px 8px;font-size:15px">${[1,1.5,2,2.5,3,4].map(v=>`<option value="${v}" ${v===dictPause?'selected':''}>${String(v).replace('.',',')} s</option>`).join('')}</select></label></div>
    <div class="row" style="margin-bottom:4px"><button class="btn sm" id="lzBtn" data-act="lzCon" style="flex:1">📏 Conectar láser</button><button class="btn sm pri" id="lzMed" data-act="lzMed" style="display:none">Medir</button></div>
    <div class="note" id="lzSt" style="margin-bottom:10px">${Laser.conectado()?'Láser conectado. Toca una casilla (o una cifra de la foto) para elegir dónde cae la siguiente medida.':''}</div>
-   <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div>
-   <div class="card"><div style="font-weight:600;margin-bottom:4px">Enchufes y copetes</div>
+   <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div></div>
+   <div class="card">${foldHead('enc','Enchufes y copetes')}<div class="${foldCls('enc')}" data-foldc="enc" style="margin-top:4px">
     <div class="note" style="margin-bottom:8px">Enchufes: distancias desde las líneas del láser hasta el eje (centro). Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm. Copetes: remate lateral, largo = pared en obra + ajuste (−14 por defecto: 12 grosor del frente + 2 holgura).</div>
     ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
     ${(f.copetes||[]).map((cp,i)=>`<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1} · Copete</div><div class="s">${esc(copDesc(cp))}</div></div><span class="chev">›</span></button>`).join('')}
-    <div class="grid2"><button class="btn" data-act="addEnc">+ Añadir enchufe</button><button class="btn" data-act="addCop">+ Añadir copete</button></div></div>
+    <div class="grid2"><button class="btn" data-act="addEnc">+ Añadir enchufe</button><button class="btn" data-act="addCop">+ Añadir copete</button></div></div></div>
    <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de descuentos</div>
     <label class="chk"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Igual que la promoción</label>
     ${f.cfg?`<div class="note" style="margin:-2px 2px 8px">Valores propios de este frente (mm):</div>
@@ -933,7 +942,6 @@ async function setupCanvas(){
   curImg=await getImg(f.photo);
   if(!curImg){cv.parentElement.innerHTML='<div class="empty" style="color:#fff">No se pudo cargar la foto.</div>';return;}
   drawCanvas();applyView();
-  cv.style.touchAction=(mode==='laser'||mode==='draw'||mode==='cotas')?'none':'manipulation';
   let drag=false,stroke=null,penSeen=false,lastPt=null,cdrag=null,erasing=false,erased=false;
   const touches=new Map();let pinch=null,pan=null;
   const pos=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height];};
@@ -956,8 +964,9 @@ async function setupCanvas(){
         pinch={d0:Math.hypot(p2[0]-p1[0],p2[1]-p1[1])||1,m0:[(p1[0]+p2[0])/2,(p1[1]+p2[1])/2],z0:VIEW.z,tx0:VIEW.tx,ty0:VIEW.ty};
         try{cv.setPointerCapture(e.pointerId);}catch(_){}return;}
       if(touches.size>2)return;
-      if(mode==='draw'&&penSeen){pan={p0:wrapPt(e),tx0:VIEW.tx,ty0:VIEW.ty};try{cv.setPointerCapture(e.pointerId);}catch(_){}return;}
+      if(mode==='draw'&&penSeen&&drawTool!=='mover'){pan={p0:wrapPt(e),tx0:VIEW.tx,ty0:VIEW.ty};try{cv.setPointerCapture(e.pointerId);}catch(_){}return;}
     }
+    if(mode==='draw'&&drawTool==='mover'){if(VIEW.z>1){pan={p0:wrapPt(e),tx0:VIEW.tx,ty0:VIEW.ty};try{cv.setPointerCapture(e.pointerId);}catch(_){}}return;}
     const pt=pos(e);
     if(mode==='laser'){undoPush();drag=true;try{cv.setPointerCapture(e.pointerId);}catch(_){}setCross(pt);return;}
     if(mode==='cotas'){
@@ -1024,6 +1033,7 @@ function applyView(){
   if(VIEW.z<=1.001)VIEW={z:1,tx:0,ty:0};
   VIEW.tx=Math.min(0,Math.max(w-w*VIEW.z,VIEW.tx));VIEW.ty=Math.min(0,Math.max(h-h*VIEW.z,VIEW.ty));
   cv.style.transform=VIEW.z>1?`translate(${VIEW.tx}px,${VIEW.ty}px) scale(${VIEW.z})`:'';
+  cv.style.touchAction=(drawTool==='mover'&&VIEW.z<=1)?'pan-y':'none';
 }
 function drawCanvas(){
   const cv=$('#cv'),f=F();if(!cv||!curImg||!f)return;
@@ -1045,8 +1055,11 @@ async function editMeasure(k){
 }
 // ---------- Dictado de medidas ----------
 const SRec=window.SpeechRecognition||window.webkitSpeechRecognition;
-const DEF_ORDER=['lt','lb','ul','dl','rt','rb','ur','dr'];
-let DCFG=(()=>{const c=LS.get('fc_dorder',null);if(c&&Array.isArray(c.order)&&c.order.length===8&&DEF_ORDER.every(k=>c.order.includes(k)))return{order:c.order,skip:(c.skip||[]).filter(k=>DEF_ORDER.includes(k))};return{order:DEF_ORDER.slice(),skip:[]};})();
+// Orden por defecto: pared abajo izq, pared arriba izq, pared abajo dcha, pared arriba dcha, mueble izq, techo izq, mueble dcha, techo dcha
+const DEF_ORDER=['lb','lt','rb','rt','dl','ul','dr','ur'];
+const OLD_DEF_ORDER='lt,lb,ul,dl,rt,rb,ur,dr';
+let DCFG=(()=>{const c=LS.get('fc_dorder',null);if(c&&Array.isArray(c.order)&&c.order.join(',')===OLD_DEF_ORDER)return{order:DEF_ORDER.slice(),skip:(c.skip||[]).filter(k=>DEF_ORDER.includes(k))};
+  if(c&&Array.isArray(c.order)&&c.order.length===8&&DEF_ORDER.every(k=>c.order.includes(k)))return{order:c.order,skip:(c.skip||[]).filter(k=>DEF_ORDER.includes(k))};return{order:DEF_ORDER.slice(),skip:[]};})();
 let DORDER=DCFG.order.filter(k=>!DCFG.skip.includes(k));
 function ordBadge(k){const i=DORDER.indexOf(k);return i<0?'–':String(i+1);}
 function refreshOrd(){document.querySelectorAll('[data-ord]').forEach(e=>e.textContent=ordBadge(e.dataset.ord));}
@@ -1674,6 +1687,7 @@ const A={
   addEnc(){encForm(null);},
   editEnc(d){encForm(+d.i);},
   dcol(d){drawTool='pen';drawColor=d.c;try{localStorage.setItem('fc_dc',drawColor);}catch(e){}render();},
+  dmover(){drawTool='mover';render();},
   dnota(){drawTool=drawTool==='nota'?'pen':'nota';render();},
   dgoma(){drawTool=drawTool==='goma'?'pen':'goma';render();},
   cotasReset(){const f=F();undoPush();f.cp={};Store.save(P());drawCanvas();},
