@@ -71,6 +71,7 @@ table.dims td:last-child{text-align:right;font-weight:700;font-variant-numeric:t
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30;max-width:90%}
 #toast.show{opacity:1}
 .hidefile{display:none}
+.cpb{flex:none;display:block;margin:0;width:22px;height:20px;padding:0;border:1px solid #d1d5db;border-radius:5px;background:#fff;color:#374151;font:700 12px/18px system-ui,sans-serif;text-align:center}.cpb:active{background:#e5e7eb}
 .ordn{flex:none;width:22px;height:22px;border-radius:50%;background:#e5e7eb;color:#374151;font:700 12px/22px system-ui,sans-serif;text-align:center}
 #dictbar{position:fixed;left:0;right:0;bottom:0;z-index:15;background:#111827;color:#fff;padding:12px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.25)}
 #dictbar[hidden]{display:none}
@@ -102,6 +103,8 @@ input.in.dicting,select.in.dicting{outline:3px solid #f59e0b;outline-offset:2px}
 // ===== PURE-START (geometría, DXF, ZIP) =====
 const KEYS=['ul','lt','lb','dl','ur','rt','rb','dr'];
 const MIRROR={lt:'lb',rt:'rb',ul:'ur',dl:'dr'};
+// Pareja de cada casilla (para el botón de calcar)
+const PAIRK={lt:'lb',lb:'lt',rt:'rb',rb:'rt',ul:'ur',ur:'ul',dl:'dr',dr:'dl'};
 const PAIRC={lt:'#2563eb',lb:'#2563eb',rt:'#16a34a',rb:'#16a34a',ul:'#9333ea',ur:'#9333ea',dl:'#d97706',dr:'#d97706'};
 const KLAB={lt:'Izq · rayo → pared (arriba)',lb:'Izq · rayo → pared (abajo)',ul:'Izq · rayo → techo',dl:'Izq · rayo → mueble',
  rt:'Dcha · rayo → pared (arriba)',rb:'Dcha · rayo → pared (abajo)',ur:'Dcha · rayo → techo',dr:'Dcha · rayo → mueble'};
@@ -791,7 +794,7 @@ function renderFrente(app){
   const p=P(),pi=PI(),f=F(),idx=pi.frentes.indexOf(f);
   const name=f.name||('Frente '+(idx+1));
   $('#ttl').textContent=pi.title+' · '+name;
-  const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}${MIRROR[k]?' ⇢':''}<span style="display:flex;align-items:center;gap:5px"><input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"><span class="ordn" data-ord="${k}">${ordBadge(k)}</span></span></label>`;
+  const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}<span style="display:flex;align-items:center;gap:5px"><input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"><span style="display:flex;flex-direction:column;align-items:center;gap:2px"><span class="ordn" data-ord="${k}">${ordBadge(k)}</span><button type="button" class="cpb" data-cp="${k}" title="Calcar de ${esc(KLAB[PAIRK[k]])}">${/^(lt|lb|rt|rb)$/.test(k)?'⇅':'⇄'}</button></span></span></label>`;
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>${esc(name)}</b><button class="btn sm" data-act="renFrente">Renombrar</button></div></div>`+
   (f.photo?`<div class="tools"><button class="btn sm ${mode==='med'?'on':''}" data-act="mode" data-m="med">Medidas</button><button class="btn sm ${mode==='laser'?'on':''}" data-act="mode" data-m="laser">Mover láser</button><button class="btn sm ${mode==='nota'?'on':''}" data-act="mode" data-m="nota">Nota</button><button class="btn sm ${mode==='draw'?'on':''}" data-act="mode" data-m="draw">✏️ Dibujar</button><button class="btn sm pri" data-act="dictStart">🎤 Dictar</button></div>
    ${mode==='draw'?`<div class="dtools">${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
@@ -801,7 +804,7 @@ function renderFrente(app){
    <div class="cvwrap"><canvas id="cv"></canvas></div>
    <div class="grid2" style="margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
-  `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Las casillas del mismo color van enlazadas: lo que escribas en la marcada con ⇢ se copia a su pareja (pared arriba → pared abajo, techo y mueble izquierda → derecha). Luego corrige la pareja si es distinta.</div>
+  `<div class="card"><div style="font-weight:600">Medidas desde el láser (mm)</div><div class="note" style="margin-bottom:10px">Las casillas del mismo color son pareja. Si miden lo mismo, pulsa el botón pequeño ⇅ / ⇄ al lado de la casilla para calcar la medida de su pareja.</div>
    <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn sm pri" data-act="dictStart" style="flex:1 1 100%">🎤 Dictar medidas</button><button class="btn sm" data-act="orderEdit">⚙ Orden</button>
      <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="obra" ${dictUnit==='obra'?'selected':''}>m y cm</option><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label>
      <label class="note" style="display:flex;align-items:center;gap:6px">espera <select class="in" id="dictPause" style="width:auto;padding:6px 8px;font-size:15px">${[1,1.5,2,2.5,3,4].map(v=>`<option value="${v}" ${v===dictPause?'selected':''}>${String(v).replace('.',',')} s</option>`).join('')}</select></label></div>
@@ -830,8 +833,13 @@ function renderFrente(app){
   app.querySelectorAll('input[data-k]').forEach(i=>i.onfocus=()=>{if(Dict){const j=DORDER.indexOf(i.dataset.k);if(j>=0){Dict.i=j;dictBanner();}}else if(Laser.conectado()&&DORDER.includes(i.dataset.k)){LZ.k=i.dataset.k;lzMark();}});
   app.querySelectorAll('input[data-k]').forEach(i=>i.oninput=()=>{
     const v=i.value.trim(),k=i.dataset.k;f.m[k]=v===''?null:v;i.classList.toggle('miss',num(v)==null);
-    if(MIRROR[k])setMeasureInput(MIRROR[k],v);
     Store.save(p);drawCanvas();renderPrev();
+  });
+  // Botón pequeño: calca la medida de su pareja
+  app.querySelectorAll('[data-cp]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();
+    const k=b.dataset.cp,o=PAIRK[k],v=f.m[o];
+    if(num(v)==null){toast(KLAB[o]+' está vacía');return;}
+    setMeasureInput(k,String(v));Store.save(p);drawCanvas();renderPrev();toast('✓ '+KLAB[k]+' = '+fmt(num(v))+' mm');
   });
   const cs=$('#cfgSame');if(cs)cs.onchange=()=>{
     if(cs.checked)delete f.cfg;
@@ -976,7 +984,7 @@ async function editMeasure(k){
   const r=await modal({title:KLAB[k],fields:[{label:'Medida en mm',value:f.m[k]==null?'':f.m[k],num:true,ph:'mm'}],
     buttons:[{label:'Cancelar',v:null},{label:'Guardar',v:'ok'},{label:'Siguiente →',v:'next',pri:true}]});
   if(!r.v)return;const v=r.values[0].trim();f.m[k]=v===''?null:v;Store.save(p);
-  setMeasureInput(k,v);if(MIRROR[k])setMeasureInput(MIRROR[k],v);
+  setMeasureInput(k,v);
   drawCanvas();renderPrev();
   if(r.v==='next'){const i=DORDER.indexOf(k);const seq=i<0?DORDER:DORDER.slice(i+1).concat(DORDER.slice(0,i));const nx=seq.find(q=>num(f.m[q])==null);if(nx)editMeasure(nx);else toast('Todas las medidas puestas');}
 }
@@ -1077,7 +1085,7 @@ function dictApply(q,raw){
   if(q.cmd==='back'){Dict.i=Math.max(0,Dict.i-1);Dict.heard='';return dictBanner();}
   if(q.cmd==='next'){Dict.heard='';return dictNext();}
   const k=DORDER[Dict.i],v=Math.round(q.mm*10)/10,sv=String(v);
-  setMeasureInput(k,sv);if(MIRROR[k])setMeasureInput(MIRROR[k],sv);
+  setMeasureInput(k,sv);
   Store.save(P());drawCanvas();renderPrev();
   try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}
   Dict.heard='✓ '+KLAB[k]+': '+fmt(v)+' mm';dictNext();
@@ -1493,7 +1501,7 @@ Laser.onMedida=mm=>{
   if(route.v!=='frente'||!F()){toast('Láser: '+sv+' mm (abre un frente para guardarla)');return;}
   if(Dict){dictApply({mm},sv);return;}
   const k=lzTarget(),p=P(),f=F();
-  setMeasureInput(k,sv);if(MIRROR[k])setMeasureInput(MIRROR[k],sv);
+  setMeasureInput(k,sv);
   Store.save(p);renderPrev();
   const i=DORDER.indexOf(k);
   toast('✓ '+KLAB[k]+': '+sv+' mm');
