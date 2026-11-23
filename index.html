@@ -429,12 +429,13 @@ let S={promos:[]};
 let route={v:'home'};
 let mode='draw'; // la foto solo sirve para dibujar
 let drawTool='mover';          // mover | pen | goma | nota
-const FOLD={};try{Object.assign(FOLD,JSON.parse(localStorage.getItem('fc_fold')||'{}'));}catch(e){}
-function foldHead(k,title){return `<button type="button" class="fold ${FOLD[k]?'closed':''}" data-fold="${k}"><span>${title}</span><span class="chev2">▾</span></button>`;}
-function foldCls(k){return 'foldc'+(FOLD[k]?' closed':'');}
-document.addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const k=b.dataset.fold;FOLD[k]=!FOLD[k];
-  try{localStorage.setItem('fc_fold',JSON.stringify(FOLD));}catch(_){}
-  b.classList.toggle('closed',!!FOLD[k]);const c=document.querySelector('[data-foldc="'+k+'"]');if(c)c.classList.toggle('closed',!!FOLD[k]);});
+// Persianas: siempre recogidas al abrir un frente
+let FOLD={};
+const foldOff=k=>FOLD[k]!==false;
+function foldHead(k,title){return `<button type="button" class="fold ${foldOff(k)?'closed':''}" data-fold="${k}"><span>${title}</span><span class="chev2">▾</span></button>`;}
+function foldCls(k){return 'foldc'+(foldOff(k)?' closed':'');}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const k=b.dataset.fold;FOLD[k]=!foldOff(k);
+  b.classList.toggle('closed',foldOff(k));const c=document.querySelector('[data-foldc="'+k+'"]');if(c)c.classList.toggle('closed',foldOff(k));});
 let VIEW={z:1,tx:0,ty:0};      // zoom de la foto (dos dedos)
 const UNDO={id:null,st:[]};    // deshacer: dibujo, cotas y cruce del láser
 function undoPush(){const f=F();if(!f)return;if(UNDO.id!==f.id){UNDO.id=f.id;UNDO.st=[];}
@@ -709,7 +710,7 @@ const P=()=>S.promos.find(p=>p.id===route.p);
 const PI=()=>{const p=P();return p&&p.pisos.find(x=>x.id===route.pi);};
 const F=()=>{const pi=PI();return pi&&pi.frentes.find(x=>x.id===route.f);};
 function filled(f){return KEYS.filter(k=>num(f.m[k])!=null).length;}
-function go(r){dictStop();VIEW={z:1,tx:0,ty:0};drawTool='mover';if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
+function go(r){dictStop();VIEW={z:1,tx:0,ty:0};FOLD={};drawTool='mover';if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
 
 function fileBtn(label,cls,kind){
   const acc=kind==='imp'?'.json,application/json':'image/*',cap=kind.startsWith('cam')?' capture="environment"':'';
@@ -843,7 +844,7 @@ function renderFrente(app){
      <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt(f.cfg.cuts[k]))}"></label>`).join('')}</div>
      <div class="grid2" style="margin-top:8px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div>`
      :`<div class="note">Descuentos y enchufes de la promoción. Desmarca para poner valores distintos solo en este frente.</div>`}</div>
-   <div class="card"><div style="font-weight:600;margin-bottom:6px">Pieza resultante</div><div class="note" id="cutnote" style="margin-bottom:8px"></div><div id="prev" class="prev"></div></div>
+   <div class="card">${foldHead('pieza','Pieza resultante')}<div class="${foldCls('pieza')}" data-foldc="pieza" style="margin-top:6px"><div class="note" id="cutnote" style="margin-bottom:8px"></div><div id="prev" class="prev"></div></div></div>
    ${mailChk()}
    <div style="font-weight:600;margin:0 2px 6px">DXF de este frente</div>
    <div class="grid2"><button class="btn pri" data-act="dxfFrente">⬇ Descargar</button>${mailBtn('dxfFrente')}</div>
