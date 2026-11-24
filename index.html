@@ -817,17 +817,18 @@ function renderPromo(app){
   const loc=p.loc||{};
   app.innerHTML=`<div class="card"><div class="ttl"><b>${esc(p.title)}</b><button class="btn sm" data-act="renPromo">Renombrar</button></div></div>
   <button class="btn pri full" data-act="newPiso" style="margin-bottom:12px">+ Añadir piso</button>
-  <div class="card"><div style="font-weight:600;margin-bottom:8px">Ubicación de la obra</div>
+  <div class="card">${foldHead('ploc','Ubicación de la obra')}<div class="${foldCls('ploc')}" data-foldc="ploc" style="margin-top:8px">
    <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
-   <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div>
+   <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div></div>
   <div class="card">${foldHead('pdesc','Descuentos sobre la medida (mm)')}<div class="${foldCls('pdesc')}" data-foldc="pdesc" style="margin-top:8px">
    <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-cut="${k}" value="${esc(fmt(p.cuts[k]))}"></label>`).join('')}</div>
    <div style="font-weight:600;margin:12px 0 8px">Enchufes (mm)</div>
    <div class="grid2"><label class="note">Ø agujero<input class="in" inputmode="decimal" data-pset="dia" value="${esc(fmt(num(p.dia)||68))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-pset="sep" value="${esc(fmt(num(p.sep)||70))}"></label></div></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
-    return `<button class="item" data-act="openPiso" data-id="${pi.id}"><div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
+    const fph=(pi.frentes.find(f=>f.photo)||{}).photo;
+    return `<button class="item" data-act="openPiso" data-id="${pi.id}">${fph?`<img class="thumb" data-ph="${esc(JSON.stringify(fph))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Sin pisos todavía.</div>`)+
   `<div class="card" style="margin-top:12px">${foldHead('pexp','Exportar')}<div class="${foldCls('pexp')}" data-foldc="pexp" style="margin-top:8px">
    <div style="font-weight:600;margin:0 2px 6px">Todos los DXF de los pisos</div>
@@ -837,6 +838,7 @@ function renderPromo(app){
    <div class="grid2"><button class="btn" data-act="dxfPromo">⬇ Descargar</button>${mailBtn('dxfPromo')}</div>
    <p class="note" style="margin:4px 2px 0">Lo mismo, más un DXF con todos los pisos y las fotos anotadas.</p></div></div>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPromo">Borrar promoción</button>`;
+  app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.photoURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
   app.querySelectorAll('[data-pset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0){p[i.dataset.pset]=v;Store.save(p);}});
   const lt=$('#locTxt');if(lt)lt.onchange=()=>{p.loc={...(p.loc||{}),txt:lt.value.trim()};Store.save(p);};
   app.querySelectorAll('[data-cut]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null){p.cuts[i.dataset.cut]=v;Store.save(p);}});
@@ -904,7 +906,6 @@ function renderFrente(app){
    ${mailChk()}
    <div style="font-weight:600;margin:0 2px 6px">DXF de este frente</div>
    <div class="grid2"><button class="btn pri" data-act="dxfFrente">⬇ Descargar</button>${mailBtn('dxfFrente')}</div>
-   <button class="btn full" style="margin-top:8px" data-act="copyDxf">Copiar DXF (texto)</button>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delFrente">Borrar frente</button>`;
   const du=$('#dictUnit');if(du)du.onchange=()=>{dictUnit=du.value;LS.set('fc_du',dictUnit);dictBanner();};
   const dp=$('#dictPause');if(dp)dp.onchange=()=>{dictPause=+dp.value;LS.set('fc_pause',dictPause);};
