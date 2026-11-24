@@ -27,6 +27,7 @@ main{max-width:none;margin:0;padding:8px 8px 80px}
 .item .s{color:var(--mut);font-size:13px}
 .item .grow{flex:1;min-width:0}
 .item .chev{color:var(--mut);font-size:22px}
+.thumbs{display:flex;gap:4px;flex-wrap:wrap;max-width:60%;flex:none}
 .thumb{width:64px;height:48px;border-radius:6px;object-fit:cover;background:#e5e7eb;flex:none;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:12px}
 .btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:11px 14px;font:600 15px system-ui,sans-serif;cursor:pointer;min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
@@ -373,10 +374,9 @@ function buildDXF(promo,pisos){
         const cops=f.copetes.map((cp,j)=>{const q=copGeom(cp,null),off=-(q.A+250)*j;return{...q,pts:q.pts.map(t=>[t[0],t[1]+off])};});
         const bb=bbox(cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-200])).concat([[0,150]]));
         const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200,S=p=>[p[0]+dx,p[1]+dy];
-        W.text(LY.txt,S([0,60]),35,String(f.name||'FRENTE').toUpperCase()+' (SOLO COPETES)',0,0,0);
+        W.text(LY.txt,S([0,60]),35,String(f.name||'FRENTE').toUpperCase(),0,0,0);
         cops.forEach((q,j)=>{const pts=q.pts.map(S);W.lwpoly(LY.ext,pts);cantoSegs(pts,q.lado).forEach(([a,b])=>W.line(LY.canto,a,b));const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
-          cota(LY.gen,pts[3],pts[2],cc);cota(LY.gen,pts[0],pts[3],cc);
-          W.text(LY.txt,[pts[0][0]+20,pts[0][1]+20],30,'COPETE'+(cops.length>1?' '+(j+1):''),0,0,0);});
+          cota(LY.gen,pts[3],pts[2],cc);cota(LY.gen,pts[0],pts[3],cc);});
         x+=bb.w+400+700;rowH=Math.max(rowH,bb.h+400);return;
       }
       any=true;
@@ -422,7 +422,6 @@ function buildDXF(promo,pisos){
         W.lwpoly(LY.ext,pts);cantoSegs(pts,q.lado).forEach(([a,b])=>W.line(LY.canto,a,b));
         const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
         cota(LY.gen,pts[3],pts[2],cc);cota(LY.gen,pts[0],pts[3],cc);
-        W.text(LY.txt,[pts[0][0]+20,pts[0][1]+20],30,'COPETE'+(cops.length>1?' '+(j+1):''),0,0,0);
       });
       x+=bb.w+400+700;
       rowH=Math.max(rowH,bb.h+400);
@@ -837,7 +836,7 @@ function renderPiso(app){
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
   <h2>Frentes</h2>`+
   (pi.frentes.length?pi.frentes.map((f,i)=>{const n=filled(f);
-    return `<button class="item" data-act="openFrente" data-id="${f.id}">${f.photo?`<img class="thumb" data-ph="${esc(JSON.stringify(f.photo))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}${allPh(f).length>1?' · <span style="color:var(--mut)">'+allPh(f).length+' fotos</span>':''}${f.cfg?' · <span style="color:var(--mut)">config. propia</span>':''}</div></div><span class="chev">›</span></button>`;}).join('')
+    return `<button class="item" data-act="openFrente" data-id="${f.id}">${f.photo?`<span class="thumbs">${allPh(f).map(x=>`<img class="thumb" data-ph="${esc(JSON.stringify(x.photo))}" alt="">`).join('')}</span>`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}${allPh(f).length>1?' · <span style="color:var(--mut)">'+allPh(f).length+' fotos</span>':''}${f.cfg?' · <span style="color:var(--mut)">config. propia</span>':''}</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Añade una foto de cada frente de cocina.</div>`)+
   `<div class="grid2"><button class="btn pri" data-act="addCam">📷 Hacer foto</button><button class="btn" data-act="addGal">🖼 Galería</button></div>
    <button class="btn full" style="margin-top:8px" data-act="addNoPhoto">+ Frente sin foto</button>
@@ -1340,9 +1339,9 @@ function encDictNext(){
 }
 const CSTEPS=[
   {i:0,t:'Lado del copete',h:'di «izquierda», «derecha» o «ninguno»',w:t=>/izq/.test(t)?'izq':/(derech|dcha)/.test(t)?'dcha':/(ningun|nada|sin|\bno\b)/.test(t)?'no':null},
+  {i:3,t:'Medida de la pared en obra',num:true},
   {i:1,t:'Ajuste en mm (di «menos catorce» o «más catorce»)',signed:true},
-  {i:2,t:'Altura del copete',num:true},
-  {i:3,t:'Medida de la pared en obra',num:true}
+  {i:2,t:'Altura del copete',num:true}
 ];
 // Sustituye un desplegable del formulario por botones grandes
 function bigChoice(sel,opts,onch){
@@ -1375,18 +1374,12 @@ async function copForm(i){
       bx.onclick=e=>{const b=e.target.closest('[data-lado]');if(!b)return;sel.value=b.dataset.lado;paint();};
       sel.addEventListener('change',paint);paint();}
     // Ajuste y altura en la misma línea; botón ± para cambiar el signo del ajuste
-    if(fl[1]&&fl[2]){const w=document.createElement('div');w.className='grid2';fl[1].before(w);w.append(fl[1],fl[2]);
+    if(fl[1]&&fl[2]){const w=document.createElement('div');w.className='grid2';fl[1].before(w);w.append(fl[1],fl[2]);if(fl[3])w.before(fl[3]);   // la medida de pared va antes del ajuste
       const ai=fl[1].querySelector('input');ai.setAttribute('inputmode','text');
       const row=document.createElement('div');row.style.cssText='display:flex;gap:6px;align-items:center';ai.before(row);row.append(ai);
       row.insertAdjacentHTML('beforeend','<button type="button" class="btn sm" id="ajSg" style="flex:none;width:44px;font-size:18px;font-weight:700">±</button>');
       $('#ajSg').onclick=()=>{const v=num(ai.value);const n=v==null?14:-v;ai.value=(n<0?'-':'+')+fmt(Math.abs(n));};
-      // Valores rápidos del ajuste
-      const qk=document.createElement('div');qk.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px';
-      qk.innerHTML=['-14','+14','0','-22'].map(v=>`<button type="button" class="btn sm" data-aj="${v}" style="font-weight:700">${v.replace('-','−')}</button>`).join('');
-      row.after(qk);
-      const paintAj=()=>qk.querySelectorAll('[data-aj]').forEach(b=>b.classList.toggle('pri',num(ai.value.replace('−','-'))===num(b.dataset.aj)));
-      qk.onclick=e=>{const b=e.target.closest('[data-aj]');if(!b)return;ai.value=b.dataset.aj;paintAj();};
-      ai.addEventListener('input',paintAj);$('#ajSg').addEventListener('click',paintAj);paintAj();
+
       w.insertAdjacentHTML('afterend','<div class="note" style="margin:-4px 0 10px">Ajuste: −14 = 12 de grosor del frente + 2 de holgura. Con + se añade en vez de descontar.</div>');}}
   encDictUI('copete',CSTEPS);
   const r=await pr;encDictStop();
