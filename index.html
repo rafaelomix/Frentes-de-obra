@@ -536,7 +536,9 @@ const Store={
   col(){return this.db.collection('data/users/'+this.uid);},
   save(p){p.updated=Date.now();clearTimeout(this.timers[p.id]);setSync('saving');
     if(this.mode==='gs'){const pe=new Set(LS.get('fc_pend',[]));pe.add(p.id);LS.set('fc_pend',[...pe]);}
-    this.timers[p.id]=setTimeout(()=>this.flush(p.id),700);},
+    this.timers[p.id]=setTimeout(()=>{delete this.timers[p.id];this.flush(p.id);},700);},
+  // guardar ya lo pendiente (al salir de la app o ocultarla)
+  flushAll(){for(const id of Object.keys(this.timers)){clearTimeout(this.timers[id]);delete this.timers[id];this.flush(id);}},
   flush(id){
     this.chains[id]=(this.chains[id]||Promise.resolve()).then(async()=>{
       const p=S.promos.find(x=>x.id===id);if(!p)return;const data=clone(p);
@@ -622,7 +624,7 @@ const Store={
           merged.push(lp);pend.add(lp.id);}
         LS.set('fc_pend',[...pend]);LS.set('fc_known',srv.map(x=>x.id));
         if(changed){S.promos=merged;if(this.idb)for(const p of merged){try{await idbReq(this.idb,'promos','readwrite',s=>s.put(clone(p)));}catch(e){}}
-          const ae=document.activeElement;if(!(ae&&(ae.tagName==='INPUT'||ae.tagName==='SELECT'))&&$('#modal').hidden)render();}
+          const ae=document.activeElement;if(!(ae&&(ae.tagName==='INPUT'||ae.tagName==='SELECT'))&&$('#modal').hidden)render();else this.needRender=true;}
       }
       for(const id of LS.get('fc_pend',[])){
         const p=S.promos.find(x=>x.id===id);
@@ -899,22 +901,25 @@ function renderFrente(app){
   const dp=$('#dictPause');if(dp)dp.onchange=()=>{dictPause=+dp.value;LS.set('fc_pause',dictPause);};
   app.querySelectorAll('input[data-k]').forEach(i=>i.onfocus=()=>{if(Dict){const j=DORDER.indexOf(i.dataset.k);if(j>=0){Dict.i=j;dictBanner();}}else if(Laser.conectado()&&DORDER.includes(i.dataset.k)){LZ.k=i.dataset.k;lzMark();}});
   app.querySelectorAll('input[data-k]').forEach(i=>i.oninput=()=>{
-    const v=i.value.trim(),k=i.dataset.k;f.m[k]=v===''?null:v;i.classList.toggle('miss',num(v)==null);
+    const f=F(),p=P();if(!f||!p)return;
+    const v=i.value.trim(),k=i.dataset.k;f.m=f.m||{};f.m[k]=v===''?null:v;i.classList.toggle('miss',num(v)==null);
     Store.save(p);drawCanvas();renderPrev();
   });
   // Botón pequeño: calca la medida de su pareja
   app.querySelectorAll('[data-cp]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();
+    const f=F(),p=P();if(!f||!p)return;
     const k=b.dataset.cp,o=PAIRK[k],v=f.m[o];
     if(num(v)==null){toast(KLAB[o]+' está vacía');return;}
     setMeasureInput(k,String(v));Store.save(p);drawCanvas();renderPrev();toast('✓ '+KLAB[k]+' = '+fmt(num(v))+' mm');
   });
   const cs=$('#cfgSame');if(cs)cs.onchange=()=>{
+    const f=F(),p=P();if(!f||!p)return;
     if(cs.checked)delete f.cfg;
     else{const c0=cfgOf(p,null);f.cfg={cuts:{...c0.cuts},dia:c0.dia,sep:c0.sep};}
     Store.save(p);render();
   };
-  app.querySelectorAll('[data-fcut]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&f.cfg){f.cfg.cuts[i.dataset.fcut]=v;Store.save(p);renderPrev();}});
-  app.querySelectorAll('[data-fset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0&&f.cfg){f.cfg[i.dataset.fset]=v;Store.save(p);renderPrev();}});
+  app.querySelectorAll('[data-fcut]').forEach(i=>i.oninput=()=>{const f=F(),p=P();if(!f||!p)return;const v=num(i.value);if(v!=null&&f.cfg){f.cfg.cuts[i.dataset.fcut]=v;Store.save(p);renderPrev();}});
+  app.querySelectorAll('[data-fset]').forEach(i=>i.oninput=()=>{const f=F(),p=P();if(!f||!p)return;const v=num(i.value);if(v!=null&&v>0&&f.cfg){f.cfg[i.dataset.fset]=v;Store.save(p);renderPrev();}});
   renderPrev();
   if(Dict)dictBanner();
   if(f.photo)setupCanvas();
@@ -1443,6 +1448,10 @@ async function annotatedJpg(f){
 // ---------- Envío por correo ----------
 // Descargar y enviar por correo son opciones separadas: expMode='mail' manda el archivo por correo sin descargarlo
 let expMode='dl';
+document.addEventListener('visibilitychange',()=>{if(document.hidden)try{Store.flushAll();}catch(e){}});
+window.addEventListener('pagehide',()=>{try{Store.flushAll();}catch(e){}});
+// si llegaron datos de la nube mientras escribías, se refresca la pantalla al salir de la casilla
+document.addEventListener('focusout',()=>setTimeout(()=>{const ae=document.activeElement;if(Store.needRender&&!(ae&&/INPUT|SELECT|TEXTAREA/.test(ae.tagName))&&$('#modal').hidden){Store.needRender=false;render();}},150));
 (function(){const vv=window.visualViewport;const set=()=>{const h=vv?vv.height:window.innerHeight;document.documentElement.style.setProperty('--vvh',h+'px');const m=document.getElementById('modal');if(m&&vv)m.style.top=vv.offsetTop+'px';};
   if(vv){vv.addEventListener('resize',set);vv.addEventListener('scroll',set);}window.addEventListener('resize',set);set();
   document.addEventListener('focusin',e=>{const t=e.target;if(t&&t.closest&&t.closest('#mbox')&&/INPUT|TEXTAREA|SELECT/.test(t.tagName))setTimeout(()=>{try{t.scrollIntoView({block:'center',behavior:'smooth'});}catch(_){}},300);});})();
