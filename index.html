@@ -227,13 +227,15 @@ function fAj(a){return (a<0?'−':'+')+fmt(Math.abs(a));}
 function copLen(cp){const pw=num(cp.largo);return pw>0?pw+copAj(cp):null;}
 function copGeom(cp,g){
   const A=num(cp.alt)||45,Lc=copLen(cp),L=Lc>0?Lc:600;
-  if(!g)return{L,A,falta:!(Lc>0),pts:[[0,0],[L,0],[L,-A],[0,-A]]};   // frente sin medidas: copete suelto
+  if(!g)return{L,A,lado:cp.lado,falta:!(Lc>0),pts:[[0,0],[L,0],[L,-A],[0,-A]]};   // frente sin medidas: copete suelto
   const m=g.m;
   const x0=cp.lado==='dcha'?m.rb-L:-m.lb,yTop=Math.min(-m.dl,-m.dr)-300;
-  return{L,A,falta:!(Lc>0),pts:[[x0,yTop],[x0+L,yTop],[x0+L,yTop-A],[x0,yTop-A]]};
+  return{L,A,lado:cp.lado,falta:!(Lc>0),pts:[[x0,yTop],[x0+L,yTop],[x0+L,yTop-A],[x0,yTop-A]]};
 }
 // ¿El frente aporta algo al DXF? (pieza completa o, al menos, copetes)
 function exportable(f,p){return !!(geom(f,cfgOf(p,f).cuts)||(f.copetes&&f.copetes.length));}
+// Canto visto del copete: arista de arriba y el lateral del lado elegido (pts = [arriba-izq, arriba-dcha, abajo-dcha, abajo-izq])
+function cantoSegs(pts,lado){const s=[[pts[0],pts[1]]];if(lado==='izq')s.push([pts[0],pts[3]]);else if(lado==='dcha')s.push([pts[1],pts[2]]);return s;}
 function copDesc(cp){const a=copAj(cp),pw=num(cp.largo),L=copLen(cp);
   return (cp.lado==='izq'?'izquierda':cp.lado==='dcha'?'derecha':'sin lado')+' · '+(pw>0?'pared '+fmt(pw)+' '+fAj(a)+' = '+fmt(L):'¿medida de pared? (ajuste '+fAj(a)+')')+' × '+fmt(num(cp.alt)||45);}
 // Enchufe doble/triple/cuádruple: una sola figura (colisa) = semicírculos en los extremos unidos en recto. Polilínea cerrada con arcos (bulge).
@@ -339,7 +341,7 @@ const DS_EX='ESTILO 1 MM',DS_OBRA='ESTILO 05  MM';   // nombres exactos de PLANT
 // Parámetros sacados de PLANTILLA_ENCIMERAS.dxf: flecha 60, texto 40, sin hueco, entero, coma decimal; DIMSCALE 1 y 0,5
 const DSPEC={'ESTILO 1 MM':{sc:1},'ESTILO 05  MM':{sc:0.5}};
 const DS_ASZ=60,DS_TXT=40,DS_EXO=0.625,DS_EXE=1.25;
-const LY={ext:'EXTERIOR',obra:'0 OBRACOTAS',gen:'EX_COTAS',enc:'1_INTERIOR',txt:'EX_COTAS',med:'0 OBRA'};
+const LY={ext:'EXTERIOR',obra:'0 OBRACOTAS',gen:'EX_COTAS',enc:'1_INTERIOR',txt:'EX_COTAS',med:'0 OBRA',canto:'1_CANTOVISTO'};
 function buildDXF(promo,pisos){
   const W=DXFWriter(),c=promo.cuts,H=35,HO=25;
   // Cota sobre la propia línea a-b (cotas de obra y de enchufes)
@@ -372,7 +374,7 @@ function buildDXF(promo,pisos){
         const bb=bbox(cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-200])).concat([[0,150]]));
         const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200,S=p=>[p[0]+dx,p[1]+dy];
         W.text(LY.txt,S([0,60]),35,String(f.name||'FRENTE').toUpperCase()+' (SOLO COPETES)',0,0,0);
-        cops.forEach((q,j)=>{const pts=q.pts.map(S);W.lwpoly(LY.ext,pts);const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
+        cops.forEach((q,j)=>{const pts=q.pts.map(S);W.lwpoly(LY.ext,pts);cantoSegs(pts,q.lado).forEach(([a,b])=>W.line(LY.canto,a,b));const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
           cota(LY.gen,pts[3],pts[2],cc);cota(LY.gen,pts[0],pts[3],cc);
           W.text(LY.txt,[pts[0][0]+20,pts[0][1]+20],30,'COPETE'+(cops.length>1?' '+(j+1):''),0,0,0);});
         x+=bb.w+400+700;rowH=Math.max(rowH,bb.h+400);return;
@@ -417,7 +419,7 @@ function buildDXF(promo,pisos){
       // Copetes (piezas aparte, debajo del frente)
       cops.forEach((q,j)=>{
         const pts=q.pts.map(S);
-        W.lwpoly(LY.ext,pts);
+        W.lwpoly(LY.ext,pts);cantoSegs(pts,q.lado).forEach(([a,b])=>W.line(LY.canto,a,b));
         const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
         cota(LY.gen,pts[3],pts[2],cc);cota(LY.gen,pts[0],pts[3],cc);
         W.text(LY.txt,[pts[0][0]+20,pts[0][1]+20],30,'COPETE'+(cops.length>1?' '+(j+1):''),0,0,0);
@@ -427,7 +429,7 @@ function buildDXF(promo,pisos){
     });
     cy=rowTop-(any?rowH:0)-400;
   }
-  return W.out([['0',7],[LY.ext,7],[LY.obra,2],[LY.gen,1],[LY.enc,161],[LY.med,4]],[['Standard',2.5,0],[DS_OBRA,HO,10],[DS_EX,H,12]]);
+  return W.out([['0',7],[LY.ext,7],[LY.obra,2],[LY.gen,1],[LY.enc,161],[LY.med,4],[LY.canto,30]],[['Standard',2.5,0],[DS_OBRA,HO,10],[DS_EX,H,12]]);
 }
 
 const CRCT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
@@ -942,7 +944,7 @@ function renderPrev(){
    <polygon points="${pt(g.fin)}" fill="#fed7aa" fill-opacity=".55" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>
    ${lab(fin[0],fin[1],d.top)}${lab(fin[3],fin[2],d.bottom)}${lab(fin[0],fin[3],d.left)}${lab(fin[1],fin[2],d.right)}
    ${encs.map(x=>(x.g.pts.length>1?(()=>{const b=bbox(x.g.pts);return `<rect x="${b.minX-R}" y="${-b.maxY-R}" width="${b.w+2*R}" height="${b.h+2*R}" rx="${R}" ry="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`;})():`<circle cx="${x.g.pts[0][0]}" cy="${-x.g.pts[0][1]}" r="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`)+`<text x="${x.g.c[0]}" y="${-(x.g.c[1]+R*(x.e.ori==='v'?(+x.e.n||1):1)+fs*0.4)}" font-size="${fs*0.8}" text-anchor="middle" fill="#2563eb" font-weight="700">E${x.i+1}</text>`).join('')}
-   ${cops.map(q=>`<polygon points="${pt(q.pts)}" fill="#bae6fd" fill-opacity=".7" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/><text x="${(q.pts[0][0]+q.pts[1][0])/2}" y="${-q.pts[2][1]+fs*0.9}" font-size="${fs*0.8}" text-anchor="middle" dominant-baseline="middle" fill="#075985" font-weight="700">C${q.j+1} · ${fmt(q.L)} × ${fmt(q.A)}</text>`).join('')}</svg>
+   ${cops.map(q=>`<polygon points="${pt(q.pts)}" fill="#bae6fd" fill-opacity=".7" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>${cantoSegs(q.pts,q.lado).map(([a,b])=>`<line x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" stroke="#f97316" stroke-width="4" vector-effect="non-scaling-stroke"/>`).join('')}<text x="${(q.pts[0][0]+q.pts[1][0])/2}" y="${-q.pts[2][1]+fs*0.9}" font-size="${fs*0.8}" text-anchor="middle" dominant-baseline="middle" fill="#075985" font-weight="700">C${q.j+1} · ${fmt(q.L)} × ${fmt(q.A)}</text>`).join('')}</svg>
    ${out.length?`<div class="warn" style="margin-top:8px">⚠ ${out.map(x=>'E'+(x.i+1)).join(', ')} se sale de la pieza. Revisa las medidas.</div>`:''}
    <table class="dims"><tr><td>Ancho máximo × alto máximo</td><td>${fmt(bbox(fin).w)} × ${fmt(bbox(fin).h)}</td></tr>
    ${cops.map(q=>`<tr><td>Copete C${q.j+1}${q.falta?' (falta la medida de pared, dibujado a 600)':''}</td><td>${fmt(q.L)} × ${fmt(q.A)}</td></tr>`).join('')}</table>`;
