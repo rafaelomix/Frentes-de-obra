@@ -567,13 +567,32 @@ const Store={
     if(this.mode==='gs'){
       const id='ph_'+uid();
       try{await idbReq(this.idb,'photos','readwrite',s=>s.put(blob,id));}catch(e){memPhotos.set(id,blob);}
-      const q=LS.get('fc_phq',[]);q.push(id);LS.set('fc_phq',q);
+      const q=LS.get('fc_phq',[]);q.push(id);
+      // miniatura aparte (≈10 KB) para que las listas carguen rápido en otros aparatos
+      try{const t=await makeThumb(blob);if(t){await this.putLocal(id+'_t',t);q.push(id+'_t');}}catch(e){}
+      LS.set('fc_phq',q);
       return{g:id};
     }
     if(this.assets){try{const r=await this.assets.upload(blob,{type:'image/jpeg'});return{a:r.id};}catch(e){console.warn('upload',e);}}
     const id='ph_'+uid();
     if(this.idb){try{await idbReq(this.idb,'photos','readwrite',s=>s.put(blob,id));return{l:id};}catch(e){}}
     memPhotos.set(id,blob);return{l:id};
+  },
+  async putLocal(id,b){try{await idbReq(this.idb,'photos','readwrite',s=>s.put(b,id));}catch(e){memPhotos.set(id,b);}},
+  // Miniatura: local -> Drive (archivo _t) -> se genera desde la foto grande y se sube para los demás aparatos
+  async thumbURL(ref){
+    if(!ref)return null;if(ref.a)return this.photoURL(ref);
+    const id=ref.g||ref.l,k='t:'+id;if(this.urls.has(k))return this.urls.get(k);
+    let b=await this.localBlob(id+'_t');
+    if(!b&&ref.g&&this.mode==='gs'&&navigator.onLine!==false){
+      try{const r=await gsApi('photoGet',{name:id+'_t'});if(r&&r.b64){const bin=atob(r.b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+        b=new Blob([u],{type:r.mime||'image/jpeg'});await this.putLocal(id+'_t',b);}}catch(e){}
+    }
+    if(!b){const full=await this.photoURL(ref);if(!full)return null;
+      try{const fb=await (await fetch(full)).blob();b=await makeThumb(fb);
+        if(b){await this.putLocal(id+'_t',b);if(ref.g&&this.mode==='gs'){const q=LS.get('fc_phq',[]);if(!q.includes(id+'_t')){q.push(id+'_t');LS.set('fc_phq',q);}}}}
+      catch(e){return full;}}
+    if(!b)return null;const url=URL.createObjectURL(b);this.urls.set(k,url);return url;
   },
   async localBlob(id){let b=memPhotos.get(id);if(!b&&this.idb){try{b=await idbReq(this.idb,'photos','readonly',s=>s.get(id));}catch(e){}}return b||null;},
   async photoURL(ref){
@@ -617,7 +636,7 @@ const Store={
         if(b){const buf=new Uint8Array(await b.arrayBuffer());let bin='';for(let i=0;i<buf.length;i+=0x8000)bin+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));
           await gsApi('photoUp',{name:id,b64:btoa(bin)});
           // la promoción que usa esta foto se vuelve a guardar para que Drive la coloque en su carpeta
-          const owner=S.promos.find(p=>p.pisos.some(pi=>pi.frentes.some(fr=>allPh(fr).some(f=>f.photo.g===id))));
+          const owner=id.endsWith('_t')?null:S.promos.find(p=>p.pisos.some(pi=>pi.frentes.some(fr=>allPh(fr).some(f=>f.photo.g===id))));
           if(owner){const pe=new Set(LS.get('fc_pend',[]));pe.add(owner.id);LS.set('fc_pend',[...pe]);}}
         LS.set('fc_phq',LS.get('fc_phq',[]).filter(x=>x!==id));
       }
@@ -722,6 +741,15 @@ async function getImg(ref){
   const p=new Promise(res=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>res(null);im.src=url;});
   imgCache.set(url,p);return p;
 }
+async function makeThumb(blob){
+  const url=URL.createObjectURL(blob);
+  try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
+    const sc=Math.min(1,200/Math.max(im.naturalWidth,im.naturalHeight)),cv=document.createElement('canvas');
+    cv.width=Math.max(1,Math.round(im.naturalWidth*sc));cv.height=Math.max(1,Math.round(im.naturalHeight*sc));
+    cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
+    return await new Promise(res=>cv.toBlob(res,'image/jpeg',0.7));}
+  finally{URL.revokeObjectURL(url);}
+}
 async function compress(file){
   const url=URL.createObjectURL(file);
   const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
@@ -799,8 +827,8 @@ function renderHome(app){
       return `<button class="item" data-act="openPromo" data-id="${p.id}"><div class="grow"><div class="t">${esc(p.title)}</div><div class="s">${p.pisos.length} piso${p.pisos.length==1?'':'s'} · ${nf} frente${nf==1?'':'s'}</div></div><span class="chev">›</span></button>`;}).join('')
     :`<div class="empty">Aún no hay promociones.<br>Crea la primera para empezar.</div>`)+
     `<button class="btn pri full" data-act="newPromo">+ Nueva promoción</button>
-     ${Store.mode==='gs'?`<h2>Sincronización</h2><div class="card"><div class="note" id="syncinfo">${esc(syncInfo())}</div>
-       <div class="grid2" style="margin-top:10px"><button class="btn sm" data-act="syncNow">Sincronizar ahora</button><button class="btn sm dang" data-act="logout">Cerrar sesión</button></div></div>`:''}
+     ${Store.mode==='gs'?`<div class="card" style="margin-top:12px">${foldHead('sync','Sincronización')}<div class="${foldCls('sync')}" data-foldc="sync" style="margin-top:8px"><div class="note" id="syncinfo">${esc(syncInfo())}</div>
+       <div class="grid2" style="margin-top:10px"><button class="btn sm" data-act="syncNow">Sincronizar ahora</button><button class="btn sm dang" data-act="logout">Cerrar sesión</button></div></div></div>`:''}
      <div class="card" style="margin-top:12px">${foldHead('copia','Copia de seguridad')}<div class="${foldCls('copia')}" data-foldc="copia" style="margin-top:8px">
      <label class="chk"><input type="checkbox" id="incFotos" ${incFotos?'checked':''}> Incluir fotos</label>
      <p class="note" style="margin:-4px 2px 10px">Sin fotos la copia pesa muy poco. Al importar sin fotos se conservan las fotos que ya tengas en este dispositivo.</p>
@@ -838,7 +866,7 @@ function renderPromo(app){
    <div class="grid2"><button class="btn" data-act="dxfPromo">⬇ Descargar</button>${mailBtn('dxfPromo')}</div>
    <p class="note" style="margin:4px 2px 0">Lo mismo, más un DXF con todos los pisos y las fotos anotadas.</p></div></div>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPromo">Borrar promoción</button>`;
-  app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.photoURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
+  app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.thumbURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
   app.querySelectorAll('[data-pset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0){p[i.dataset.pset]=v;Store.save(p);}});
   const lt=$('#locTxt');if(lt)lt.onchange=()=>{p.loc={...(p.loc||{}),txt:lt.value.trim()};Store.save(p);};
   app.querySelectorAll('[data-cut]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null){p.cuts[i.dataset.cut]=v;Store.save(p);}});
@@ -847,15 +875,15 @@ function renderPromo(app){
 function renderPiso(app){
   const p=P(),pi=PI();$('#ttl').textContent=pi.title;
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
+  <button class="btn pri full" data-act="addNoPhoto" style="margin-bottom:12px">+ Añadir frente</button>
   <h2>Frentes</h2>`+
   (pi.frentes.length?pi.frentes.map((f,i)=>{const n=filled(f);
     return `<button class="item" data-act="openFrente" data-id="${f.id}">${f.photo?`<span class="thumbs">${allPh(f).map(x=>`<img class="thumb" data-ph="${esc(JSON.stringify(x.photo))}" alt="">`).join('')}</span>`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}${allPh(f).length>1?' · <span style="color:var(--mut)">'+allPh(f).length+' fotos</span>':''}${f.cfg?' · <span style="color:var(--mut)">config. propia</span>':''}</div></div><span class="chev">›</span></button>`;}).join('')
-   :`<div class="empty">Añade una foto de cada frente de cocina.</div>`)+
-  `<div class="grid2"><button class="btn pri" data-act="addCam">📷 Hacer foto</button><button class="btn" data-act="addGal">🖼 Galería</button></div>
-   <button class="btn full" style="margin-top:8px" data-act="addNoPhoto">+ Frente sin foto</button>
-   <h2>Exportar DXF del piso</h2><div class="grid2"><button class="btn pri" data-act="dxfPiso">⬇ Descargar</button>${mailBtn('dxfPiso')}</div>
+   :`<div class="empty">Sin frentes todavía. Pulsa «+ Añadir frente» y dentro añade sus fotos.</div>`)+
+  `
+   <div class="card" style="margin-top:12px">${foldHead('pisoexp','Exportar DXF del piso')}<div class="${foldCls('pisoexp')}" data-foldc="pisoexp" style="margin-top:8px"><div class="grid2"><button class="btn pri" data-act="dxfPiso">⬇ Descargar</button>${mailBtn('dxfPiso')}</div></div></div>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPiso">Borrar piso</button>`;
-  app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.photoURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
+  app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.thumbURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
 }
 
 function crossSVG(){
