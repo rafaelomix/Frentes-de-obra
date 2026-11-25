@@ -991,14 +991,24 @@ function renderPrev(){
     return `<line x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" stroke="${col}" stroke-width="1" vector-effect="non-scaling-stroke"/>`+
       [a,b].map(p=>`<line x1="${p[0]-nx*t}" y1="${-(p[1]-ny*t)}" x2="${p[0]+nx*t}" y2="${-(p[1]+ny*t)}" stroke="${col}" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('')+
       `<text x="${mx+nx*sf*0.75}" y="${-(my+ny*sf*0.75)}" font-size="${sf}" text-anchor="middle" dominant-baseline="middle" fill="${col}" transform="rotate(${-ang} ${mx+nx*sf*0.75} ${-(my+ny*sf*0.75)})">${fmt(Math.round(v))}</text>`;};
-  const m=g.m,o=sf*1.6,OC='#a16207';
-  const obraDims=dimS([0,m.ul-o],[-m.lt,m.ul-o],m.lt,OC)+dimS([0,-m.dl+o],[-m.lb,-m.dl+o],m.lb,OC)+dimS([0,m.ur-o],[m.rt,m.ur-o],m.rt,OC)+dimS([0,-m.dr+o],[m.rb,-m.dr+o],m.rb,OC)+
-    dimS([-m.lt+o,0],[-m.lt+o,m.ul],m.ul,OC)+dimS([-m.lb+o,0],[-m.lb+o,-m.dl],m.dl,OC)+dimS([m.rt-o,0],[m.rt-o,m.ur],m.ur,OC)+dimS([m.rb-o,0],[m.rb-o,-m.dr],m.dr,OC);
+  // cotas de obra fuera de la figura, más allá de las medidas grandes
+  const m=g.m,OC='#a16207',gap=fs*2.6;
+  const yT=Math.max(m.ul,m.ur)+gap,yB=-Math.max(m.dl,m.dr)-gap,xL=-Math.max(m.lt,m.lb)-gap*1.15,xR=Math.max(m.rt,m.rb)+gap*1.15;
+  const ext=(a,b)=>`<line x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" stroke="${OC}" stroke-width="0.6" stroke-opacity=".6" vector-effect="non-scaling-stroke"/>`;
+  const obraDims=
+    ext([-m.lt,m.ul],[-m.lt,yT])+ext([m.rt,m.ur],[m.rt,yT])+ext([0,0],[0,yT])+dimS([0,yT],[-m.lt,yT],m.lt,OC)+dimS([0,yT],[m.rt,yT],m.rt,OC)+
+    ext([-m.lb,-m.dl],[-m.lb,yB])+ext([m.rb,-m.dr],[m.rb,yB])+ext([0,0],[0,yB])+dimS([0,yB],[-m.lb,yB],m.lb,OC)+dimS([0,yB],[m.rb,yB],m.rb,OC)+
+    ext([-m.lt,m.ul],[xL,m.ul])+ext([-m.lb,-m.dl],[xL,-m.dl])+ext([0,0],[xL,0])+dimS([xL,0],[xL,m.ul],m.ul,OC)+dimS([xL,0],[xL,-m.dl],m.dl,OC)+
+    ext([m.rt,m.ur],[xR,m.ur])+ext([m.rb,-m.dr],[xR,-m.dr])+ext([0,0],[xR,0])+dimS([xR,0],[xR,m.ur],m.ur,OC)+dimS([xR,0],[xR,-m.dr],m.dr,OC);
+  // los copetes, por debajo de las cotas de obra
+  if(cops.length){const cTop=Math.max(...cops.flatMap(q=>q.pts.map(t=>t[1]))),dyC=Math.min(0,(yB-sf*2.5)-cTop);
+    if(dyC)cops.forEach(q=>{q.pts=q.pts.map(t=>[t[0],t[1]+dyC]);});}
+  const vb=bbox([[bb.minX,bb.maxY],[xL-sf*1.5,yB-sf*1.5],[xR+sf*1.5,yT+sf*1.5],...cops.flatMap(q=>q.pts.map(t=>[t[0]+(q.partir?COP_GAP:0),t[1]-fs*1.4]))]);
   const encDims=encs.map(x=>{const ec=x.g.c,gb=bbox(x.g.pts),[TL,TR,BR,BL]=fin;
     const xl=BL[0]+(ec[1]-BL[1])*(TL[0]-BL[0])/((TL[1]-BL[1])||1),yb=BL[1]+(ec[0]-BL[0])*(BR[1]-BL[1])/((BR[0]-BL[0])||1);
     const yh=gb.minY-R-sf,xv=gb.maxX+R+sf;
     return dimS([xl,yh],[ec[0],yh],ec[0]-xl,'#1d4ed8')+dimS([xv,yb],[xv,ec[1]],ec[1]-yb,'#1d4ed8');}).join('');
-  el.innerHTML=`<svg viewBox="${bb.minX-pad} ${-bb.maxY-pad} ${bb.w+2*pad} ${bb.h+2*pad}">
+  el.innerHTML=`<svg viewBox="${vb.minX-pad*0.4} ${-vb.maxY-pad*0.4} ${vb.w+pad*0.8} ${vb.h+pad*0.8}">
    <polygon points="${pt(g.meas)}" fill="none" stroke="#9ca3af" stroke-width="1" vector-effect="non-scaling-stroke"/>
    <polygon points="${pt(g.fin)}" fill="#fed7aa" fill-opacity=".55" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>
    <line x1="${bb.minX-pad/2}" y1="0" x2="${bb.maxX+pad/2}" y2="0" stroke="#dc2626" stroke-width="1.5" stroke-opacity=".85" vector-effect="non-scaling-stroke"/>
