@@ -850,10 +850,6 @@ function renderPromo(app){
    <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
    <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div></div>
-  <div class="card">${foldHead('pdesc','Descuentos sobre la medida (mm)')}<div class="${foldCls('pdesc')}" data-foldc="pdesc" style="margin-top:8px">
-   <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-cut="${k}" value="${esc(fmt(p.cuts[k]))}"></label>`).join('')}</div>
-   <div style="font-weight:600;margin:12px 0 8px">Enchufes (mm)</div>
-   <div class="grid2"><label class="note">Ø agujero<input class="in" inputmode="decimal" data-pset="dia" value="${esc(fmt(num(p.dia)||68))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-pset="sep" value="${esc(fmt(num(p.sep)||70))}"></label></div></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     const fph=(pi.frentes.find(f=>f.photo)||{}).photo;
@@ -926,7 +922,7 @@ function renderFrente(app){
     ${(f.copetes||[]).map((cp,i)=>`<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1} · Copete</div><div class="s">${esc(copDesc(cp))}</div></div><span class="chev">›</span></button>`).join('')}
     <div class="grid2"><button class="btn" data-act="addEnc">+ Añadir enchufe</button><button class="btn" data-act="addCop">+ Añadir copete</button></div></div></div>
    <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de descuentos</div>
-    <div style="display:flex;align-items:center"><label class="chk" style="flex:1"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Igual que la promoción</label>${qh('Marcado: este frente usa los descuentos y enchufes de la promoción. Desmarca para poner valores distintos solo en este frente.')}</div>
+    <div style="display:flex;align-items:center"><label class="chk" style="flex:1"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Valores por defecto</label>${qh('Marcado: descuentos arriba 2, abajo 12, izquierda 2 y derecha 2 mm; enchufes Ø68 con 70 mm entre ejes. Desmarca para poner valores distintos en este frente.')}</div>
     ${f.cfg?`
      <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt(f.cfg.cuts[k]))}"></label>`).join('')}</div>
      <div class="grid2" style="margin-top:8px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div>`
@@ -989,11 +985,25 @@ function renderPrev(){
   const d=dims(g.fin),fin=g.fin,cen=[(fin[0][0]+fin[2][0])/2,(fin[0][1]+fin[2][1])/2];
   const lab=(a,b,v)=>{const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1;let nx=-dy/l,ny=dx/l;if((mx-cen[0])*nx+(my-cen[1])*ny<0){nx=-nx;ny=-ny;}
     return `<text x="${mx+nx*fs*1.1}" y="${-(my+ny*fs*1.1)}" font-size="${fs}" text-anchor="middle" dominant-baseline="middle" font-weight="700" fill="#065f46">${fmt(v)}</text>`;};
+  // Cotas pequeñas: desde el rayo a paredes/techo/mueble (obra) y posición de los enchufes desde los bordes de la pieza
+  const sf=fs*0.5,dimS=(a,b,v,col)=>{const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<1)return '';const ux=(b[0]-a[0])/l,uy=(b[1]-a[1])/l,nx=-uy,ny=ux,t=sf*0.35;
+    const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;let ang=Math.atan2(-uy,ux)*180/Math.PI;if(ang>90)ang-=180;if(ang<-90)ang+=180;
+    return `<line x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" stroke="${col}" stroke-width="1" vector-effect="non-scaling-stroke"/>`+
+      [a,b].map(p=>`<line x1="${p[0]-nx*t}" y1="${-(p[1]-ny*t)}" x2="${p[0]+nx*t}" y2="${-(p[1]+ny*t)}" stroke="${col}" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('')+
+      `<text x="${mx+nx*sf*0.75}" y="${-(my+ny*sf*0.75)}" font-size="${sf}" text-anchor="middle" dominant-baseline="middle" fill="${col}" transform="rotate(${-ang} ${mx+nx*sf*0.75} ${-(my+ny*sf*0.75)})">${fmt(Math.round(v))}</text>`;};
+  const m=g.m,o=sf*1.6,OC='#a16207';
+  const obraDims=dimS([0,m.ul-o],[-m.lt,m.ul-o],m.lt,OC)+dimS([0,-m.dl+o],[-m.lb,-m.dl+o],m.lb,OC)+dimS([0,m.ur-o],[m.rt,m.ur-o],m.rt,OC)+dimS([0,-m.dr+o],[m.rb,-m.dr+o],m.rb,OC)+
+    dimS([-m.lt+o,0],[-m.lt+o,m.ul],m.ul,OC)+dimS([-m.lb+o,0],[-m.lb+o,-m.dl],m.dl,OC)+dimS([m.rt-o,0],[m.rt-o,m.ur],m.ur,OC)+dimS([m.rb-o,0],[m.rb-o,-m.dr],m.dr,OC);
+  const encDims=encs.map(x=>{const ec=x.g.c,gb=bbox(x.g.pts),[TL,TR,BR,BL]=fin;
+    const xl=BL[0]+(ec[1]-BL[1])*(TL[0]-BL[0])/((TL[1]-BL[1])||1),yb=BL[1]+(ec[0]-BL[0])*(BR[1]-BL[1])/((BR[0]-BL[0])||1);
+    const yh=gb.minY-R-sf,xv=gb.maxX+R+sf;
+    return dimS([xl,yh],[ec[0],yh],ec[0]-xl,'#1d4ed8')+dimS([xv,yb],[xv,ec[1]],ec[1]-yb,'#1d4ed8');}).join('');
   el.innerHTML=`<svg viewBox="${bb.minX-pad} ${-bb.maxY-pad} ${bb.w+2*pad} ${bb.h+2*pad}">
-   <line x1="${bb.minX-pad/2}" y1="0" x2="${bb.maxX+pad/2}" y2="0" stroke="#dc2626" stroke-dasharray="${fs/2} ${fs/3}" vector-effect="non-scaling-stroke"/>
-   <line x1="0" y1="${-bb.maxY-pad/2}" x2="0" y2="${-bb.minY+pad/2}" stroke="#dc2626" stroke-dasharray="${fs/2} ${fs/3}" vector-effect="non-scaling-stroke"/>
-   <polygon points="${pt(g.meas)}" fill="none" stroke="#9ca3af" stroke-dasharray="${fs/2} ${fs/3}" vector-effect="non-scaling-stroke"/>
+   <polygon points="${pt(g.meas)}" fill="none" stroke="#9ca3af" stroke-width="1" vector-effect="non-scaling-stroke"/>
    <polygon points="${pt(g.fin)}" fill="#fed7aa" fill-opacity=".55" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>
+   <line x1="${bb.minX-pad/2}" y1="0" x2="${bb.maxX+pad/2}" y2="0" stroke="#dc2626" stroke-width="1.5" stroke-opacity=".85" vector-effect="non-scaling-stroke"/>
+   <line x1="0" y1="${-bb.maxY-pad/2}" x2="0" y2="${-bb.minY+pad/2}" stroke="#dc2626" stroke-width="1.5" stroke-opacity=".85" vector-effect="non-scaling-stroke"/>
+   ${obraDims}${encDims}
    ${lab(fin[0],fin[1],d.top)}${lab(fin[3],fin[2],d.bottom)}${lab(fin[0],fin[3],d.left)}${lab(fin[1],fin[2],d.right)}
    ${encs.map(x=>(x.g.pts.length>1?(()=>{const b=bbox(x.g.pts);return `<rect x="${b.minX-R}" y="${-b.maxY-R}" width="${b.w+2*R}" height="${b.h+2*R}" rx="${R}" ry="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`;})():`<circle cx="${x.g.pts[0][0]}" cy="${-x.g.pts[0][1]}" r="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`)+`<text x="${x.g.c[0]}" y="${-(x.g.c[1]+R*(x.e.ori==='v'?(+x.e.n||1):1)+fs*0.4)}" font-size="${fs*0.8}" text-anchor="middle" fill="#2563eb" font-weight="700">E${x.i+1}</text>`).join('')}
    ${cops.map(q=>copParts(q).map(pc=>`<polygon points="${pt(pc.pts)}" fill="#bae6fd" fill-opacity=".7" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>${cantoSegs(pc.pts,pc.lado).map(([a,b])=>`<line x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" stroke="#f97316" stroke-width="4" vector-effect="non-scaling-stroke"/>`).join('')}`).join('')+`<text x="${(q.pts[0][0]+q.pts[1][0]+(q.partir?COP_GAP:0))/2}" y="${-q.pts[2][1]+fs*0.9}" font-size="${fs*0.8}" text-anchor="middle" dominant-baseline="middle" fill="#075985" font-weight="700">C${q.j+1} · ${copTxt(q)}</text>`).join('')}</svg>
