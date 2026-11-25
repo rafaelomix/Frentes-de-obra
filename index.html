@@ -53,6 +53,8 @@ input.in.miss{background:#fff7ed;border-color:#fdba74}
 .mg svg{width:100%;height:auto}
 .cvwrap{position:relative;border-radius:10px;overflow:hidden;background:#000;margin-bottom:10px}
 #cv{transform-origin:0 0;display:block}
+.qh{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1.5px solid #9ca3af;background:#fff;color:#4b5563;font:700 13px/1 system-ui,sans-serif;padding:0;margin-left:6px;vertical-align:middle;flex:none;cursor:pointer}
+.qhrow{display:flex;justify-content:flex-end;margin:-2px 0 6px}
 .phstrip{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
 .cvwrap,.cvwrap *,.dtools{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 /* Que nada se seleccione al apoyar la mano o mantener pulsado (menos los campos de texto) */
@@ -830,13 +832,12 @@ function renderHome(app){
      ${Store.mode==='gs'?`<div class="card" style="margin-top:12px">${foldHead('sync','Sincronización')}<div class="${foldCls('sync')}" data-foldc="sync" style="margin-top:8px"><div class="note" id="syncinfo">${esc(syncInfo())}</div>
        <div class="grid2" style="margin-top:10px"><button class="btn sm" data-act="syncNow">Sincronizar ahora</button><button class="btn sm dang" data-act="logout">Cerrar sesión</button></div></div></div>`:''}
      <div class="card" style="margin-top:12px">${foldHead('copia','Copia de seguridad')}<div class="${foldCls('copia')}" data-foldc="copia" style="margin-top:8px">
-     <label class="chk"><input type="checkbox" id="incFotos" ${incFotos?'checked':''}> Incluir fotos</label>
-     <p class="note" style="margin:-4px 2px 10px">Sin fotos la copia pesa muy poco. Al importar sin fotos se conservan las fotos que ya tengas en este dispositivo.</p>
+     <div style="display:flex;align-items:center"><label class="chk" style="flex:1"><input type="checkbox" id="incFotos" ${incFotos?'checked':''}> Incluir fotos</label>${qh('Sin fotos la copia pesa muy poco. Al importar sin fotos se conservan las fotos que ya tengas en este dispositivo.')}</div>
      ${mailChk()}
      <div class="grid2"><button class="btn" data-act="exportAll">Exportar copia</button><button class="btn" data-act="importAll">Importar copia</button></div>
      ${inClaude?'':`<div style="margin-top:8px">${mailBtn('exportAll','Enviar copia por correo').replace('class="btn"','class="btn full"')}</div>`}
      </div></div>
-     <p class="note" style="margin-top:14px">Cómo medir: láser en cruz sobre la encimera. Desde la línea vertical se mide a la pared izquierda y derecha, arriba y abajo. Desde la línea horizontal, en el lado izquierdo y en el derecho, se mide hasta el techo (o mueble alto) y hasta el mueble de abajo. Todas las medidas en mm.</p>`;
+`;
 }
 
 document.addEventListener('change',e=>{if(e.target&&e.target.id==='incFotos'){incFotos=e.target.checked;try{localStorage.setItem('fc_incFotos',incFotos?'1':'0');}catch(_){}}});
@@ -859,12 +860,12 @@ function renderPromo(app){
     return `<button class="item" data-act="openPiso" data-id="${pi.id}">${fph?`<img class="thumb" data-ph="${esc(JSON.stringify(fph))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Sin pisos todavía.</div>`)+
   `<div class="card" style="margin-top:12px">${foldHead('pexp','Exportar')}<div class="${foldCls('pexp')}" data-foldc="pexp" style="margin-top:8px">
-   <div style="font-weight:600;margin:0 2px 6px">Todos los DXF de los pisos</div>
+   <div style="font-weight:600;margin:0 2px 6px">Todos los DXF de los pisos${qh('Un archivo DXF por cada piso, todos juntos.')}</div>
    <div class="grid2"><button class="btn pri" data-act="dxfAllPisos">⬇ Descargar</button>${mailBtn('dxfAllPisos')}</div>
-   <p class="note" style="margin:4px 2px 10px">Un archivo DXF por cada piso, todos juntos.</p>
-   <div style="font-weight:600;margin:0 2px 6px">DXF + fotos anotadas</div>
+   <div style="height:10px"></div>
+   <div style="font-weight:600;margin:0 2px 6px">DXF + fotos anotadas${qh('Un DXF por piso, más un DXF con todos los pisos y las fotos anotadas.')}</div>
    <div class="grid2"><button class="btn" data-act="dxfPromo">⬇ Descargar</button>${mailBtn('dxfPromo')}</div>
-   <p class="note" style="margin:4px 2px 0">Lo mismo, más un DXF con todos los pisos y las fotos anotadas.</p></div></div>
+</div></div>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPromo">Borrar promoción</button>`;
   app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.thumbURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
   app.querySelectorAll('[data-pset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0){p[i.dataset.pset]=v;Store.save(p);}});
@@ -907,12 +908,12 @@ function renderFrente(app){
      <button class="btn sm ${drawTool==='goma'?'on':''}" data-act="dgoma">🧽 Goma</button>
      <button class="btn sm ${drawTool==='nota'?'on':''}" data-act="dnota">📝 Nota</button>
      <button class="btn sm" data-act="dundo">↶ Deshacer</button><button class="btn sm dang" data-act="dclear">Borrar dibujo</button>
-     ${VIEW.z>1.01?'<button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button>':''}</div>
-   <p class="hint">${drawTool==='mover'?'Mover: no pinta. Arrastra para moverte por la foto ampliada. Para dibujar, elige un color o un grosor.':drawTool==='goma'?'Goma: toca o arrastra sobre un trazo para borrarlo.':drawTool==='nota'?'Nota: toca la foto para añadir una nota; toca una nota para editarla o borrarla.':'Dibuja sobre la foto con el lápiz o el dedo.'} Con dos dedos acercas o alejas. Si usas el Apple Pencil, el dedo no pinta (sirve para mover la foto ampliada).</p>
+     ${VIEW.z>1.01?'<button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button>':''}${qh('✋ Mover: no pinta; arrastra para moverte por la foto ampliada. Colores y grosores: dibujar. 🧽 Goma: toca o arrastra sobre un trazo para borrarlo. 📝 Nota: toca la foto para añadir una nota; toca una nota para editarla. Con dos dedos acercas o alejas. Con el Apple Pencil el dedo no pinta.')}</div>
    <div class="cvwrap"><canvas id="cv"></canvas></div>
    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar esta foto</button><button class="btn sm dang" data-act="phDel">🗑 Quitar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
-  `<div class="card">${foldHead('med','Medidas desde el láser (mm)')}<div class="${foldCls('med')}" data-foldc="med" style="margin-top:4px"><div class="note" style="margin-bottom:10px">Las casillas del mismo color son pareja. Si miden lo mismo, pulsa el botón pequeño ⇅ / ⇄ al lado de la casilla para calcar la medida de su pareja.</div>
+  `<div class="card"><div style="font-weight:600;margin-bottom:6px">Notas</div><textarea class="in" id="frNota" rows="3" placeholder="Notas de este frente…" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit">${esc(f.nota||'')}</textarea></div>`+
+  `<div class="card">${foldHead('med','Medidas desde el láser (mm)')}<div class="${foldCls('med')}" data-foldc="med" style="margin-top:4px"><div class="qhrow">${qh('Cómo medir: láser en cruz sobre la encimera. Desde la línea vertical se mide a la pared izquierda y derecha, arriba y abajo. Desde la horizontal, a cada lado, hasta el techo (o mueble alto) y hasta el mueble de abajo. Todo en mm. Las casillas del mismo color son pareja: el botón ⇅ / ⇄ calca la medida de su pareja.')}</div>
    <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn sm pri" data-act="dictStart" style="flex:1 1 60%">🎤 Dictar medidas</button><button class="btn sm" data-act="kbStart" style="flex:1 1 30%">⌨ Dictar con teclado</button><button class="btn sm" data-act="orderEdit">⚙ Orden</button>
      <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="obra" ${dictUnit==='obra'?'selected':''}>m y cm</option><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label>
      <label class="note" style="display:flex;align-items:center;gap:6px">espera <select class="in" id="dictPause" style="width:auto;padding:6px 8px;font-size:15px">${[1,1.5,2,2.5,3,4].map(v=>`<option value="${v}" ${v===dictPause?'selected':''}>${String(v).replace('.',',')} s</option>`).join('')}</select></label></div>
@@ -920,16 +921,16 @@ function renderFrente(app){
    <div class="note" id="lzSt" style="margin-bottom:10px">${Laser.conectado()?'Láser conectado. Toca una casilla (o una cifra de la foto) para elegir dónde cae la siguiente medida.':''}</div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div></div></div>
    <div class="card">${foldHead('enc','Enchufes y copetes')}<div class="${foldCls('enc')}" data-foldc="enc" style="margin-top:4px">
-    <div class="note" style="margin-bottom:8px">Enchufes: distancias desde las líneas del láser hasta el eje (centro). Agujeros de Ø${fmt(cfgOf(p,f).dia)}, separación ${fmt(cfgOf(p,f).sep)} mm. Copetes: remate lateral, largo = pared en obra + ajuste (−14 por defecto: 12 grosor del frente + 2 holgura).</div>
+    <div class="qhrow">${qh('Enchufes: distancias desde las líneas del láser hasta el eje (centro). Agujeros de Ø'+fmt(cfgOf(p,f).dia)+', separación '+fmt(cfgOf(p,f).sep)+' mm. Copetes: remate lateral; largo = pared en obra + ajuste (−14 por defecto: 12 de grosor del frente + 2 de holgura).')}</div>
     ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
     ${(f.copetes||[]).map((cp,i)=>`<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1} · Copete</div><div class="s">${esc(copDesc(cp))}</div></div><span class="chev">›</span></button>`).join('')}
     <div class="grid2"><button class="btn" data-act="addEnc">+ Añadir enchufe</button><button class="btn" data-act="addCop">+ Añadir copete</button></div></div></div>
    <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de descuentos</div>
-    <label class="chk"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Igual que la promoción</label>
-    ${f.cfg?`<div class="note" style="margin:-2px 2px 8px">Valores propios de este frente (mm):</div>
+    <div style="display:flex;align-items:center"><label class="chk" style="flex:1"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Igual que la promoción</label>${qh('Marcado: este frente usa los descuentos y enchufes de la promoción. Desmarca para poner valores distintos solo en este frente.')}</div>
+    ${f.cfg?`
      <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt(f.cfg.cuts[k]))}"></label>`).join('')}</div>
      <div class="grid2" style="margin-top:8px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div>`
-     :`<div class="note">Descuentos y enchufes de la promoción. Desmarca para poner valores distintos solo en este frente.</div>`}</div>
+     :''}</div>
    <div class="card">${foldHead('pieza','Pieza resultante')}<div class="${foldCls('pieza')}" data-foldc="pieza" style="margin-top:6px"><div class="note" id="cutnote" style="margin-bottom:8px"></div><div id="prev" class="prev"></div></div></div>
    ${mailChk()}
    <div style="font-weight:600;margin:0 2px 6px">DXF de este frente</div>
@@ -943,6 +944,7 @@ function renderFrente(app){
     const v=i.value.trim(),k=i.dataset.k;f.m=f.m||{};f.m[k]=v===''?null:v;i.classList.toggle('miss',num(v)==null);
     Store.save(p);drawCanvas();renderPrev();
   });
+  const fn=$('#frNota');if(fn)fn.oninput=()=>{const f=F(),p=P();if(!f||!p)return;f.nota=fn.value;Store.save(p);};
   // Botón pequeño: calca la medida de su pareja
   app.querySelectorAll('[data-cp]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();
     const f=F(),p=P();if(!f||!p)return;
@@ -1173,7 +1175,7 @@ function orderEditor(){
   const cfg={order:DCFG.order.slice(),skip:DCFG.skip.slice()};
   const box=$('#mbox');
   const draw=()=>{
-    box.innerHTML=`<h3>Orden de las casillas</h3><p class="note" style="margin-top:0">Así se recorren al dictar y con «Siguiente →». Desmarca las que no quieras que pregunte.</p>`+
+    box.innerHTML=`<h3>Orden de las casillas ${qh('Así se recorren al dictar, con el láser y con «Siguiente →». Desmarca las que no quieras que pregunte.')}</h3>`+
       cfg.order.map((k,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
         <input type="checkbox" data-sk="${k}" ${cfg.skip.includes(k)?'':'checked'} style="width:22px;height:22px;accent-color:var(--acc)">
         <span style="width:22px;color:var(--mut);font-weight:700">${cfg.skip.includes(k)?'–':cfg.order.filter(x=>!cfg.skip.includes(x)).indexOf(k)+1}</span>
@@ -1433,7 +1435,7 @@ async function copForm(i){
       row.insertAdjacentHTML('beforeend','<button type="button" class="btn sm" id="ajSg" style="flex:none;width:44px;font-size:18px;font-weight:700">±</button>');
       $('#ajSg').onclick=()=>{const v=num(ai.value);const n=v==null?14:-v;ai.value=(n<0?'-':'+')+fmt(Math.abs(n));};
 
-      w.insertAdjacentHTML('afterend','<div class="note" style="margin:-4px 0 10px">Ajuste: −14 = 12 de grosor del frente + 2 de holgura. Con + se añade en vez de descontar.</div>');}}
+      const lb=fl[1].querySelector('label');if(lb)lb.insertAdjacentHTML('beforeend',qh('Ajuste: −14 = 12 de grosor del frente + 2 de holgura. Con + se añade en vez de descontar. Vacío = 0.'));}}
   encDictUI('copete',CSTEPS);
   const r=await pr;encDictStop();
   if(!r.v)return;
@@ -1496,6 +1498,16 @@ async function annotatedJpg(f){
 // ---------- Envío por correo ----------
 // Descargar y enviar por correo son opciones separadas: expMode='mail' manda el archivo por correo sin descargarlo
 let expMode='dl';
+// Ayuda: un «?» pequeño que muestra la explicación al tocarlo
+function qh(t){return `<button type="button" class="qh" data-help="${esc(t)}" aria-label="Ayuda">?</button>`;}
+document.addEventListener('click',e=>{
+  const old=document.getElementById('helpPop');
+  const b=e.target.closest('[data-help]');
+  if(old){old.remove();if(b||e.target.closest('#helpPop')){e.preventDefault();e.stopPropagation();}if(!b)return;}
+  if(!b)return;e.preventDefault();e.stopPropagation();
+  const d=document.createElement('div');d.id='helpPop';d.textContent=b.dataset.help;
+  d.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:40;background:#111827;color:#fff;padding:14px 16px;border-radius:12px;font-size:15px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.35);max-width:560px;margin:0 auto';
+  document.body.appendChild(d);},true);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)try{Store.flushAll();}catch(e){}});
 window.addEventListener('pagehide',()=>{try{Store.flushAll();}catch(e){}});
 // si llegaron datos de la nube mientras escribías, se refresca la pantalla al salir de la casilla
