@@ -1202,9 +1202,23 @@ function orderEditor(){
 }
 let dictUnit=LS.get('fc_du','obra'),Dict=null;
 const UNITTXT={obra:'metros y centímetros (ej.: «uno cincuenta y siete con cinco»)',cm:'cm',mm:'mm'};
+// «y media», «½», «1/2» se tratan como «y medio»; «coma» en modo obra = decimales de cm
+function normHalf(t){
+  t=String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  t=t.replace(/\s*½/g,' y medio ').replace(/\by\s+1\/2\b/g,' y medio ').replace(/\b1\/2\b/g,' y medio ').replace(/\by\s+media\b/g,' y medio ').replace(/\s+/g,' ').trim();
+  return t;
+}
 function parseMeasure(t){
+  t=normHalf(t);
+  if(/^(y )?medio$/.test(t))return{half:true};          // «y medio» dicho aparte de la cifra
   const c=parseSpoken(t);if(c&&(c.cmd||c.noise))return c;
-  if(dictUnit==='obra')return parseObra(t);
+  if(dictUnit==='obra'){
+    const r=parseObra(t);if(r)return r;
+    const m=t.match(/^(.*?)\s+(coma|punto)\s+(.*)$/);   // «treinta coma cinco» = 30,5 cm
+    if(m){const a=groupNums(soloNumeros(m[1]).split(/\s+/)),b=groupNums(soloNumeros(m[3]).split(/\s+/));
+      if(a&&b&&a.length===1&&b.length===1&&b[0]<10)return{mm:a[0]*10+b[0]};}
+    return null;
+  }
   if(c&&c.num!=null)return{mm:c.num*(dictUnit==='cm'?10:1)};
   return null;
 }
@@ -1257,6 +1271,8 @@ function dictListen(){
 }
 function dictApply(q,raw){
   if(!Dict)return;
+  // «y medio» llegado suelto justo después de una medida: se suma 5 mm a la anterior
+  if(q&&q.half){const L=Dict.last;if(L&&Date.now()-L.t<6000&&L.mm%10===0){const v=L.mm+5,sv=String(v);setMeasureInput(L.k,sv);Store.save(P());drawCanvas();renderPrev();Dict.heard='✓ '+KLAB[L.k]+': '+fmt(v)+' mm';L.mm=v;L.t=0;dictBanner();}return;}
   if(q.cmd==='stop')return dictStop();
   if(q.cmd==='back'){Dict.i=Math.max(0,Dict.i-1);Dict.heard='';return dictBanner();}
   if(q.cmd==='next'){Dict.heard='';return dictNext();}
@@ -1264,7 +1280,7 @@ function dictApply(q,raw){
   setMeasureInput(k,sv);
   Store.save(P());drawCanvas();renderPrev();
   try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}
-  Dict.heard='✓ '+KLAB[k]+': '+fmt(v)+' mm';dictNext();
+  Dict.heard='✓ '+KLAB[k]+': '+fmt(v)+' mm';Dict.last={k,mm:v,t:Date.now()};dictNext();
 }
 function dictNext(){
   if(!Dict)return;Dict.i++;
@@ -1285,7 +1301,7 @@ function kbStart(){
   const inp=$('#kbIn');
   const proc=()=>{clearTimeout(Dict&&Dict.timer);if(!Dict||!Dict.kb)return;const t=inp.value.trim();if(!t)return;
     const q=parseMeasure(t);inp.value='';
-    if(!q||q.noise||(q.mm==null&&!q.cmd)){$('#kbMsg').textContent='No entendido: «'+t+'». Repite la medida.';return;}
+    if(!q||q.noise||(q.mm==null&&!q.cmd&&!q.half)){$('#kbMsg').textContent='No entendido: «'+t+'». Repite la medida.';return;}
     dictApply(q,t);if(Dict&&Dict.kb){kbBanner();setTimeout(()=>inp.focus(),30);}};
   inp.oninput=()=>{clearTimeout(Dict.timer);Dict.timer=setTimeout(proc,Math.max(800,dictPause*1000));};
   inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();proc();}};
