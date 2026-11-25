@@ -1299,12 +1299,21 @@ function kbStart(){
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><button class="btn sm" id="kbBack">◀ Atrás</button><button class="btn sm" id="kbSkip">Saltar ▶</button><button class="btn sm pri" id="kbEnd">Terminar</button></div>`;
   b.hidden=false;document.body.style.paddingTop='190px';
   const inp=$('#kbIn');
-  const proc=()=>{clearTimeout(Dict&&Dict.timer);if(!Dict||!Dict.kb)return;const t=inp.value.trim();if(!t)return;
-    const q=parseMeasure(t);inp.value='';
+  // El dictado del teclado del iPad no siempre avisa con eventos: se vigila el texto cada 250 ms.
+  // No se borra la casilla mientras se dicta (el iPad lo volvería a escribir): se procesa solo lo nuevo.
+  Dict.used=0;Dict.lastVal='';Dict.lastChange=0;
+  const fresh=()=>{const v=inp.value;if(Dict.used>v.length)Dict.used=0;return v.slice(Dict.used).trim();};
+  const proc=()=>{if(!Dict||!Dict.kb)return;const t=fresh();if(!t)return;
+    Dict.used=inp.value.length;
+    const q=parseMeasure(t);
     if(!q||q.noise||(q.mm==null&&!q.cmd&&!q.half)){$('#kbMsg').textContent='No entendido: «'+t+'». Repite la medida.';return;}
-    dictApply(q,t);if(Dict&&Dict.kb){kbBanner();setTimeout(()=>inp.focus(),30);}};
-  inp.oninput=()=>{clearTimeout(Dict.timer);Dict.timer=setTimeout(proc,Math.max(800,dictPause*1000));};
-  inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();proc();}};
+    dictApply(q,t);if(Dict&&Dict.kb)kbBanner();
+    if(inp.value.length>120&&document.activeElement!==inp){inp.value='';Dict.used=0;}};
+  Dict.poll=setInterval(()=>{if(!Dict||!Dict.kb)return;const v=inp.value;
+    if(v!==Dict.lastVal){Dict.lastVal=v;Dict.lastChange=Date.now();const t=fresh();if(t)$('#kbMsg').textContent='🗣 '+t+' …';return;}
+    if(fresh()&&Date.now()-Dict.lastChange>=Math.max(800,dictPause*1000))proc();},250);
+  inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();proc();inp.value='';Dict.used=0;Dict.lastVal='';}};
+  inp.onblur=()=>setTimeout(()=>{if(Dict&&Dict.kb&&fresh())proc();},100);
   $('#kbBack').onclick=()=>{if(!Dict)return;Dict.i=Math.max(0,Dict.i-1);Dict.heard='';kbBanner();inp.focus();};
   $('#kbSkip').onclick=()=>{if(!Dict)return;Dict.heard='';dictNext();if(Dict){kbBanner();inp.focus();}};
   $('#kbEnd').onclick=()=>dictStop();
@@ -1317,7 +1326,7 @@ function kbBanner(){
   document.querySelectorAll('input[data-k]').forEach(x=>x.classList.toggle('dicting',x.dataset.k===k));drawCanvas();
 }
 function dictStop(){
-  if(!Dict)return;if(Dict.col)clearTimeout(Dict.col.timer);if(Dict.timer)clearTimeout(Dict.timer);const r=Dict.rec;Dict=null;try{r&&r.stop();}catch(e){}
+  if(!Dict)return;if(Dict.col)clearTimeout(Dict.col.timer);if(Dict.timer)clearTimeout(Dict.timer);if(Dict.poll)clearInterval(Dict.poll);const r=Dict.rec;Dict=null;try{r&&r.stop();}catch(e){}
   {const b=$('#dictbar');b.style.top='';b.style.bottom='';b.style.paddingTop='';b.style.paddingBottom='';document.body.style.paddingTop='';}
   document.querySelectorAll('input.dicting').forEach(x=>x.classList.remove('dicting'));
   const b=$('#dictbar');b.hidden=true;b.innerHTML='';drawCanvas();document.body.style.paddingBottom='';
