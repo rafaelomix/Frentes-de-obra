@@ -165,7 +165,7 @@ function soloNumeros(t){
   return t.split(/\s+/).filter(w=>w&&(/^\d+([.,]\d+)?$/.test(w)||w in NUMW||KEEPW.has(w)||segment(w))).join(' ');
 }
 function segment(w){ // separa números pegados: "unosetentaytres" -> uno setenta y tres
-  const keys=Object.keys(NUMW).concat(['y']);const memo={};
+  const keys=Object.keys(NUMW).concat(['y','con','medio','media','coma','punto']);const memo={};
   const go=i=>{if(i===w.length)return[];if(i in memo)return memo[i];memo[i]=null;
     for(const k of keys.slice().sort((a,b)=>b.length-a.length)){if(w.startsWith(k,i)){const r=go(i+k.length);if(r){memo[i]=[k].concat(r);break;}}}
     return memo[i];};
@@ -1205,6 +1205,9 @@ const UNITTXT={obra:'metros y centímetros (ej.: «uno cincuenta y siete con cin
 // «y media», «½», «1/2» se tratan como «y medio»; «coma» en modo obra = decimales de cm
 function normHalf(t){
   t=String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  t=t.replace(/(\d)[.,](\d)/g,'$1§$2').replace(/[.;:!?¿¡,]/g,' ').replace(/§/g,',');   // quita puntos finales del dictado
+  // números dichos pegados («doscuarentaconseis») -> «dos cuarenta con seis»
+  t=t.split(/\s+/).map(w=>(w.length>3&&!/\d/.test(w)&&!(w in NUMW)&&!KEEPW.has(w)&&segment(w))?segment(w).join(' '):w).join(' ');
   t=t.replace(/\s*½/g,' y medio ').replace(/\by\s+1\/2\b/g,' y medio ').replace(/\b1\/2\b/g,' y medio ').replace(/\by\s+media\b/g,' y medio ').replace(/\s+/g,' ').trim();
   return t;
 }
@@ -1363,20 +1366,39 @@ const ESTEPS=[
 function encDictUI(lbl='enchufe',steps=ESTEPS){
   encDictUI.cur={lbl,steps};
   const box=$('#mbox'),h3=box.querySelector('h3');if(!h3)return;
-  h3.insertAdjacentHTML('afterend',`<div id="edBar" style="margin:-4px 0 10px"><button class="btn sm pri" id="edGo">🎤 Dictar ${lbl}</button><div class="note" id="edMsg" style="margin-top:6px"></div></div>`);
+  h3.insertAdjacentHTML('afterend',`<div id="edBar" style="margin:-4px 0 10px"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm pri" id="edGo">🎤 Dictar ${lbl}</button><button class="btn sm" id="edKb">⌨ Dictar con teclado</button></div>
+    <input class="in" id="edKbIn" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Pulsa 🎤 en el teclado y habla" style="display:none;margin-top:8px;font-size:18px">
+    <div class="note" id="edMsg" style="margin-top:6px"></div></div>`);
   $('#edGo').onclick=()=>{if(ED)encDictStop();else encDictStart();};
+  $('#edKb').onclick=()=>{if(ED&&ED.kb)encDictStop();else encKbStart();};
+}
+// Dictado con el micrófono del teclado dentro de la ventana de enchufe / copete
+function encKbStart(){
+  if(ED)encDictStop();
+  const els=[...$('#mbox').querySelectorAll('[data-i]')].sort((a,b)=>a.dataset.i-b.dataset.i),inp=$('#edKbIn');if(!inp)return;
+  ED={els,s:0,rec:null,steps:(encDictUI.cur||{}).steps||ESTEPS,kb:true,used:0,lastVal:'',lastChange:0};
+  inp.value='';inp.style.display='';inp.focus();$('#edKb').textContent='■ Parar teclado';
+  const fresh=()=>{const v=inp.value;if(ED.used>v.length)ED.used=0;return v.slice(ED.used).trim();};
+  const proc=()=>{if(!ED||!ED.kb)return;const t=fresh();if(!t)return;ED.used=inp.value.length;
+    if(!encDictApply(t))encDictShow('No he entendido: «'+t+'»');};
+  ED.poll=setInterval(()=>{if(!ED||!ED.kb||!inp.isConnected){encDictStop();return;}const v=inp.value;
+    if(v!==ED.lastVal){ED.lastVal=v;ED.lastChange=Date.now();const t=fresh();if(t)encDictShow('🗣 '+t+' …');return;}
+    if(fresh()&&Date.now()-ED.lastChange>=Math.max(800,dictPause*1000))proc();},250);
+  inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();proc();}};
+  encDictShow('');
 }
 function encDictStart(){
   if(!SRec){toast(inClaude?'Para dictar usa la versión de GitHub.':'Este navegador no permite dictar.');return;}
-  const els=[...$('#mbox').querySelectorAll('[data-i]')];
+  const els=[...$('#mbox').querySelectorAll('[data-i]')].sort((a,b)=>a.dataset.i-b.dataset.i);   // por número de campo, no por posición en pantalla
   ED={els,s:0,rec:null,steps:(encDictUI.cur||{}).steps||ESTEPS};encDictListen();encDictShow('');
 }
-function encDictStop(){if(!ED)return;if(ED.col)clearTimeout(ED.col.timer);const r=ED.rec;ED=null;try{r&&r.stop();}catch(e){}
+function encDictStop(){if(!ED)return;if(ED.col)clearTimeout(ED.col.timer);if(ED.poll)clearInterval(ED.poll);const r=ED.rec;ED=null;try{r&&r.stop();}catch(e){}
+  {const i=$('#edKbIn');if(i){i.style.display='none';i.value='';}const k=$('#edKb');if(k)k.textContent='⌨ Dictar con teclado';}
   document.querySelectorAll('#mbox .dicting').forEach(x=>x.classList.remove('dicting'));const g=$('#edGo');if(g)g.textContent='🎤 Dictar '+((encDictUI.cur||{}).lbl||'enchufe');}
 function encDictShow(heard){
   if(!ED)return;const st=ED.steps[ED.s],m=$('#edMsg'),g=$('#edGo');if(!m){encDictStop();return;}
   ED.els.forEach((x,j)=>x.classList.toggle('dicting',st&&j===st.i));
-  if(g)g.textContent='■ Parar dictado';
+  if(g&&!ED.kb)g.textContent='■ Parar dictado';
   m.innerHTML=st?`<b>${ED.s+1}. ${esc(st.t)}</b> — ${esc(st.h||'di la medida en '+UNITTXT[dictUnit])}<br>${esc(heard||'')}`:`<b>Listo.</b> Di «guardar» o pulsa el botón. ${esc(heard||'')}`;
 }
 function encDictListen(){
@@ -1781,6 +1803,7 @@ Laser.onMedida=mm=>{
   try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}
   // Si hay una casilla de texto activa fuera de las 8 medidas (enchufe, ventana de medida…), la medida va ahí
   const ae=document.activeElement;
+  if(ae&&ae.id==='edKbIn'&&ED){const st=ED.steps[ED.s];if(st&&(st.num||st.signed)){const el=ED.els[st.i];el.value=(st.signed?'-':'')+sv;el.dispatchEvent(new Event('input',{bubbles:true}));encDictNext();toast('Láser: '+sv+' mm');}return;}
   if(ae&&ae.tagName==='INPUT'&&!ae.dataset.k&&(ae.inputMode==='decimal'||ae.closest('#mbox'))&&ae.type!=='checkbox'){
     ae.value=sv;ae.dispatchEvent(new Event('input',{bubbles:true}));toast('Láser: '+sv+' mm');return;
   }
