@@ -1211,9 +1211,24 @@ function normHalf(t){
   t=t.replace(/\s*½/g,' y medio ').replace(/\by\s+1\/2\b/g,' y medio ').replace(/\b1\/2\b/g,' y medio ').replace(/\by\s+media\b/g,' y medio ').replace(/\s+/g,' ').trim();
   return t;
 }
+function dedupeRepeat(t){
+  let w=t.split(' ');
+  for(let changed=true;changed;){changed=false;
+    for(let k=Math.floor(w.length/2);k>=2;k--){   // solo frases de 2+ palabras («dos dos» = 2,02 m es válido)
+      for(let i=0;i+2*k<=w.length;i++){if(w.slice(i,i+k).join(' ')===w.slice(i+k,i+2*k).join(' ')&&w.slice(i,i+k).some(x=>!/^\d$/.test(x)||k>1)){w.splice(i+k,k);changed=true;break;}}
+      if(changed)break;}}
+  return w.join(' ');
+}
 function parseMeasure(t){
-  t=normHalf(t);
+  t=dedupeRepeat(normHalf(t));
   if(/^(y )?medio$/.test(t))return{half:true};          // «y medio» dicho aparte de la cifra
+  if(dictUnit==='obra'){
+    // formas con cifras que escribe el dictado del iPad: «2,23 3», «2,23,3», «2 233» = 2233 · «2233» (4 cifras) = mm
+    let n;
+    if((n=t.match(/^(\d),(\d{2})(?:\s+|,)(\d)$/)))return{mm:+n[1]*1000+(+n[2])*10+(+n[3])};
+    if((n=t.match(/^(\d)\s+(\d{3})$/)))return{mm:+n[1]*1000+(+n[2])};
+    if((n=t.match(/^(\d{4})$/)))return{mm:+n[1]};
+  }
   const c=parseSpoken(t);if(c&&(c.cmd||c.noise))return c;
   if(dictUnit==='obra'){
     const r=parseObra(t);if(r)return r;
@@ -1234,7 +1249,7 @@ function dictStart(){
 // Junta lo que se dice y solo lo procesa tras una pausa (para quien habla pausado)
 let dictPause=+LS.get('fc_pause',1.5);
 function collector(st,commit,show){
-  const N=x=>String(x||'').toLowerCase().replace(/[.,;:¿?¡!]/g,' ').replace(/\s+/g,' ').trim();
+  const N=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[.,;:¿?¡!]/g,' ').replace(/\s+/g,' ').trim();
   st.buf='';st.interim='';st.done=new Set();st.consumed='';st.lastRaw='';st.wait=0;clearTimeout(st.timer);
   const strip=raw=>{let t=N(raw);if(st.consumed&&t.startsWith(st.consumed))t=t.slice(st.consumed.length).trim();return t;};
   const fire=()=>{
