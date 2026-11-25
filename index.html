@@ -239,7 +239,7 @@ function copGeom(cp,g){
 function exportable(f,p){return !!(geom(f,cfgOf(p,f).cuts)||(f.copetes&&f.copetes.length));}
 // Canto visto del copete: arista de arriba y el lateral del lado elegido (pts = [arriba-izq, arriba-dcha, abajo-dcha, abajo-izq])
 // Piezas del copete: una, o dos mitades iguales. Las dos llevan canto visto arriba; el lateral solo la del lado marcado.
-const COP_GAP=80;
+const COP_GAP=250;   // separación entre las dos mitades (deja sitio a sus cotas)
 function copParts(q){
   if(!q.partir)return[{pts:q.pts,lado:q.lado,L:q.L}];
   const[TL,TR,BR,BL]=q.pts,h=(TR[0]-TL[0])/2;
@@ -301,12 +301,19 @@ function DXFWriter(){
       // texto centrado sobre la línea de cota (DIMTAD 0), la línea se corta alrededor del texto
       const L=dist(d1,d2),vx=(d2[0]-d1[0])/L,vy=(d2[1]-d1[1])/L,mid=[(d1[0]+d2[0])/2,(d1[1]+d2[1])/2];
       const txt=fmt(Math.round(len)),tw=TH*0.62*txt.length,gap=tw/2+TH*0.15;
-      if(L>2*gap+0.1){g.line(be,br,'0',d1,[mid[0]-vx*gap,mid[1]-vy*gap],1);g.line(be,br,'0',[mid[0]+vx*gap,mid[1]+vy*gap],d2,1);}
-      // flechas rellenas (DIMASZ) en los extremos, hacia fuera
       const arrow=(tip,dx,dy)=>{const bx=tip[0]+dx*AS,by=tip[1]+dy*AS,hw=AS/6;g.solid(be,br,'0',tip,[bx-dy*hw,by+dx*hw],[bx+dy*hw,by-dx*hw]);};
-      arrow(d1,vx,vy);arrow(d2,-vx,-vy);
-      g.text(be,br,'0',mid,TH,txt,ang,1,2,1);
-      tp=mid;
+      if(L>=2*AS+2*gap){
+        // cabe todo dentro: texto en medio cortando la línea, flechas hacia fuera
+        g.line(be,br,'0',d1,[mid[0]-vx*gap,mid[1]-vy*gap],1);g.line(be,br,'0',[mid[0]+vx*gap,mid[1]+vy*gap],d2,1);
+        arrow(d1,vx,vy);arrow(d2,-vx,-vy);
+        g.text(be,br,'0',mid,TH,txt,ang,1,2,1);tp=mid;
+      }else{
+        // cota corta (p. ej. 45 del copete): flechas por fuera apuntando hacia dentro y el texto fuera, a continuación
+        g.line(be,br,'0',[d1[0]-vx*AS*1.6,d1[1]-vy*AS*1.6],[d2[0]+vx*AS*1.6,d2[1]+vy*AS*1.6],1);
+        arrow(d1,-vx,-vy);arrow(d2,vx,vy);
+        const tpo=[d2[0]+vx*(AS*1.6+gap),d2[1]+vy*(AS*1.6+gap)];
+        g.text(be,br,'0',tpo,TH,txt,ang,1,2,1);tp=tpo;
+      }
       blocks.push({br,name,be});
       E(ents,brMS,'DIMENSION',['8',ly,'100','AcDbDimension','2',name,'10',D(d2[0]),'20',D(d2[1]),'30','0','11',D(tp[0]),'21',D(tp[1]),'31','0','70','33','1','','71','5','42',D(len),'3',style,
         '100','AcDbAlignedDimension','13',D(p1[0]),'23',D(p1[1]),'33','0','14',D(p2[0]),'24',D(p2[1]),'34','0']);
@@ -383,7 +390,7 @@ function buildDXF(promo,pisos){
       const cf=cfgOf(promo,f),g=geom(f,cf.cuts);
       if(!g){
         if(!(f.copetes&&f.copetes.length))return;any=true;
-        const cops=f.copetes.map((cp,j)=>{const q=copGeom(cp,null),off=-(q.A+250)*j;return{...q,pts:q.pts.map(t=>[t[0],t[1]+off])};});
+        const cops=f.copetes.map((cp,j)=>{const q=copGeom(cp,null),off=-(q.A+380)*j;return{...q,pts:q.pts.map(t=>[t[0],t[1]+off])};});
         const bb=bbox(cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-200])).concat([[0,150]]));
         const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200,S=p=>[p[0]+dx,p[1]+dy];
         cops.forEach(q=>copParts(q).forEach(pc=>{const pts=pc.pts.map(S);W.lwpoly(LY.ext,pts);cantoSegs(pts,pc.lado).forEach(([a,b])=>W.line(LY.canto,a,b));const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
@@ -393,7 +400,7 @@ function buildDXF(promo,pisos){
       any=true;
       const encs=(f.enchufes||[]).map(e=>({e,g:encGeom(e,cf)})).filter(q=>q.g);
       const R=cf.dia/2;
-      const cops=(f.copetes||[]).map((cp,j)=>{const q=copGeom(cp,g),off=-(q.A+250)*j;return{...q,pts:q.pts.map(t=>[t[0],t[1]+off])};});
+      const cops=(f.copetes||[]).map((cp,j)=>{const q=copGeom(cp,g),off=-(q.A+380)*j;return{...q,pts:q.pts.map(t=>[t[0],t[1]+off])};});
       const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(q=>q.g.pts.flatMap(t=>[[t[0]-R,t[1]-R],[t[0]+R,t[1]+R]])),...cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-200]))]);
       const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200;
       const S=p=>[p[0]+dx,p[1]+dy];
@@ -969,7 +976,7 @@ function renderPrev(){
     // Sin frente: se dibujan solo los copetes
     let svg='';
     if(cps.length){
-      const cops=cps.map((cp,j)=>{const q=copGeom(cp,null),off=-(q.A+120)*j;return{...q,j,pts:q.pts.map(t=>[t[0],t[1]+off])};});
+      const mL=Math.max(...cps.map(cp=>copGeom(cp,null).L)),cops=cps.map((cp,j)=>{const q=copGeom(cp,null),off=-(q.A+Math.max(160,mL/22*2.4))*j;return{...q,j,pts:q.pts.map(t=>[t[0],t[1]+off])};});
       const bb=bbox(cops.flatMap(q=>[...q.pts,...q.pts.map(t=>[t[0]+(q.partir?COP_GAP:0),t[1]-60])])),fs=Math.max(bb.w/22,20),pad=fs*1.5;
       const pt=a=>a.map(q=>`${q[0]},${-q[1]}`).join(' ');
       svg=`<svg viewBox="${bb.minX-pad} ${-bb.maxY-pad} ${bb.w+2*pad} ${bb.h+2*pad}" style="width:100%;max-height:260px">${cops.map(q=>copParts(q).map(pc=>`<polygon points="${pt(pc.pts)}" fill="#bae6fd" fill-opacity=".7" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>${cantoSegs(pc.pts,pc.lado).map(([a,b])=>`<line x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" stroke="#f97316" stroke-width="4" vector-effect="non-scaling-stroke"/>`).join('')}`).join('')+`<text x="${(q.pts[0][0]+q.pts[1][0]+(q.partir?COP_GAP:0))/2}" y="${-q.pts[2][1]+fs*0.9}" font-size="${fs*0.8}" text-anchor="middle" dominant-baseline="middle" fill="#075985" font-weight="700">C${q.j+1} · ${copTxt(q)}</text>`).join('')}</svg>`;
@@ -978,7 +985,8 @@ function renderPrev(){
       (cps.length?`<table class="dims">${cps.map((cp,j)=>{const q=copGeom(cp,null);return `<tr><td>Copete C${j+1}${q.falta?' (falta la medida de pared, dibujado a 600)':''}</td><td>${copTxt(q)}</td></tr>`;}).join('')}</table>`:'');
     return;}
   const R=cf.dia/2,encs=(f.enchufes||[]).map((e,i)=>({i,e,g:encGeom(e,cf)})).filter(x=>x.g);
-  const cops=(f.copetes||[]).map((cp,j)=>{const q=copGeom(cp,g),off=-(q.A+250)*j;return{...q,j,pts:q.pts.map(t=>[t[0],t[1]+off])};});
+  const fs0=Math.max(bbox(g.meas).w,bbox(g.meas).h)/18;
+  const cops=(f.copetes||[]).map((cp,j)=>{const q=copGeom(cp,g),off=-(q.A+Math.max(250,fs0*2.2))*j;return{...q,j,pts:q.pts.map(t=>[t[0],t[1]+off])};});
   const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(x=>x.g.pts),...cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-120]))]),sz=Math.max(bb.w,bb.h),pad=sz*0.12,fs=sz/18;
   const out=encs.filter(x=>x.g.pts.some(q=>!inPoly(q,g.fin)));
   const pt=a=>a.map(q=>`${q[0]},${-q[1]}`).join(' ');
@@ -992,8 +1000,8 @@ function renderPrev(){
       [a,b].map(p=>`<line x1="${p[0]-nx*t}" y1="${-(p[1]-ny*t)}" x2="${p[0]+nx*t}" y2="${-(p[1]+ny*t)}" stroke="${col}" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('')+
       `<text x="${mx+nx*sf*0.75}" y="${-(my+ny*sf*0.75)}" font-size="${sf}" text-anchor="middle" dominant-baseline="middle" fill="${col}" transform="rotate(${-ang} ${mx+nx*sf*0.75} ${-(my+ny*sf*0.75)})">${fmt(Math.round(v))}</text>`;};
   // cotas de obra fuera de la figura, más allá de las medidas grandes
-  const m=g.m,OC='#a16207',gap=fs*2.6;
-  const yT=Math.max(m.ul,m.ur)+gap,yB=-Math.max(m.dl,m.dr)-gap,xL=-Math.max(m.lt,m.lb)-gap*1.15,xR=Math.max(m.rt,m.rb)+gap*1.15;
+  const m=g.m,OC='#a16207',gap=fs*1.9;
+  const yT=Math.max(m.ul,m.ur)+gap,yB=-Math.max(m.dl,m.dr)-gap,xL=-Math.max(m.lt,m.lb)-fs*2.5,xR=Math.max(m.rt,m.rb)+fs*2.5;
   const ext=(a,b)=>`<line x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" stroke="${OC}" stroke-width="0.6" stroke-opacity=".6" vector-effect="non-scaling-stroke"/>`;
   const obraDims=
     ext([-m.lt,m.ul],[-m.lt,yT])+ext([m.rt,m.ur],[m.rt,yT])+ext([0,0],[0,yT])+dimS([0,yT],[-m.lt,yT],m.lt,OC)+dimS([0,yT],[m.rt,yT],m.rt,OC)+
@@ -1011,8 +1019,8 @@ function renderPrev(){
   el.innerHTML=`<svg viewBox="${vb.minX-pad*0.4} ${-vb.maxY-pad*0.4} ${vb.w+pad*0.8} ${vb.h+pad*0.8}">
    <polygon points="${pt(g.meas)}" fill="none" stroke="#9ca3af" stroke-width="1" vector-effect="non-scaling-stroke"/>
    <polygon points="${pt(g.fin)}" fill="#fed7aa" fill-opacity=".55" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>
-   <line x1="${bb.minX-pad/2}" y1="0" x2="${bb.maxX+pad/2}" y2="0" stroke="#dc2626" stroke-width="1.5" stroke-opacity=".85" vector-effect="non-scaling-stroke"/>
-   <line x1="0" y1="${-bb.maxY-pad/2}" x2="0" y2="${-bb.minY+pad/2}" stroke="#dc2626" stroke-width="1.5" stroke-opacity=".85" vector-effect="non-scaling-stroke"/>
+   <line x1="${xL}" y1="0" x2="${xR}" y2="0" stroke="#dc2626" stroke-width="1.5" stroke-opacity=".85" vector-effect="non-scaling-stroke"/>
+   <line x1="0" y1="${-yT}" x2="0" y2="${-yB}" stroke="#dc2626" stroke-width="1.5" stroke-opacity=".85" vector-effect="non-scaling-stroke"/>
    ${obraDims}${encDims}
    ${lab(fin[0],fin[1],d.top)}${lab(fin[3],fin[2],d.bottom)}${lab(fin[0],fin[3],d.left)}${lab(fin[1],fin[2],d.right)}
    ${encs.map(x=>(x.g.pts.length>1?(()=>{const b=bbox(x.g.pts);return `<rect x="${b.minX-R}" y="${-b.maxY-R}" width="${b.w+2*R}" height="${b.h+2*R}" rx="${R}" ry="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`;})():`<circle cx="${x.g.pts[0][0]}" cy="${-x.g.pts[0][1]}" r="${R}" fill="#fff" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke"/>`)+`<text x="${x.g.c[0]}" y="${-(x.g.c[1]+R*(x.e.ori==='v'?(+x.e.n||1):1)+fs*0.4)}" font-size="${fs*0.8}" text-anchor="middle" fill="#2563eb" font-weight="700">E${x.i+1}</text>`).join('')}
