@@ -56,6 +56,7 @@ input.in.miss{background:#fff7ed;border-color:#fdba74}
 #mbox.inlinebox{background:#f9fafb;border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
 #mbox.inlinebox h3{font-size:16px;margin:0 0 8px}
 #encHost:not(:empty)+button,#copHost:not(:empty)+button{display:none}
+.phgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-bottom:10px}.phcell{position:relative;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#e5e7eb;aspect-ratio:4/3;cursor:pointer}.phcell img{width:100%;height:100%;object-fit:cover;display:block}.phcell span{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;padding:1px 6px;border-radius:8px}
 #mbox.inlinebox .btns{display:flex;gap:8px;margin-top:10px}#mbox.inlinebox .btns .btn{flex:1;padding:12px}
 .qh{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1.5px solid #9ca3af;background:#fff;color:#4b5563;font:700 13px/1 system-ui,sans-serif;padding:0;margin-left:6px;vertical-align:middle;flex:none;cursor:pointer}
 .qhrow{display:flex;justify-content:flex-end;margin:-2px 0 6px}
@@ -242,8 +243,9 @@ function copGeom(cp,g){
   const x0=cp.lado==='dcha'?m.rb-L:-m.lb,yTop=Math.min(-m.dl,-m.dr)-300;
   return{L,A,lado:cp.lado,partir:!!cp.partir,falta:!(Lc>0),pts:[[x0,yTop],[x0+L,yTop],[x0+L,yTop-A],[x0,yTop-A]]};
 }
-// ¿El frente aporta algo al DXF? (pieza completa o, al menos, copetes)
-function exportable(f,p){return !!(geom(f,cfgOf(p,f).cuts)||(f.copetes&&f.copetes.length));}
+// ¿El piso aporta algo al DXF? (algún frente completo o copetes)
+function pisoExportable(pi,p){return pi.frentes.some(f=>exportable(f,p))||!!(pi.copetes&&pi.copetes.length);}
+function exportable(f,p){return !!geom(f,cfgOf(p,f).cuts);}
 // Canto visto del copete: arista de arriba y el lateral del lado elegido (pts = [arriba-izq, arriba-dcha, abajo-dcha, abajo-izq])
 // Piezas del copete: una, o dos mitades iguales. Las dos llevan canto visto arriba; el lateral solo la del lado marcado.
 const COP_GAP=250;   // separación entre las dos mitades (deja sitio a sus cotas)
@@ -395,20 +397,11 @@ function buildDXF(promo,pisos){
     W.text(LY.txt,[0,cy],70,String(piso.title||'').toUpperCase(),0,0,0);
     piso.frentes.forEach(f=>{
       const cf=cfgOf(promo,f),g=geom(f,cf.cuts);
-      if(!g){
-        if(!(f.copetes&&f.copetes.length))return;any=true;
-        const cops=f.copetes.map((cp,j)=>{const q=copGeom(cp,null),off=-(q.A+380)*j;return{...q,pts:q.pts.map(t=>[t[0],t[1]+off])};});
-        const bb=bbox(cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-200])).concat([[0,150]]));
-        const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200,S=p=>[p[0]+dx,p[1]+dy];
-        cops.forEach(q=>copParts(q).forEach(pc=>{const pts=pc.pts.map(S);W.lwpoly(LY.ext,pts);cantoSegs(pts,pc.lado).forEach(([a,b])=>W.line(LY.canto,a,b));const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
-          cota(LY.gen,pts[3],pts[2],cc);cota(LY.gen,pts[0],pts[3],cc);}));
-        x+=bb.w+400+700;rowH=Math.max(rowH,bb.h+400);return;
-      }
+      if(!g)return;
       any=true;
       const encs=(f.enchufes||[]).map(e=>({e,g:encGeom(e,cf)})).filter(q=>q.g);
       const R=cf.dia/2;
-      const cops=(f.copetes||[]).map((cp,j)=>{const q=copGeom(cp,g),off=-(q.A+380)*j;return{...q,pts:q.pts.map(t=>[t[0],t[1]+off])};});
-      const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(q=>q.g.pts.flatMap(t=>[[t[0]-R,t[1]-R],[t[0]+R,t[1]+R]])),...cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-200]))]);
+      const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(q=>q.g.pts.flatMap(t=>[[t[0]-R,t[1]-R],[t[0]+R,t[1]+R]]))]);
       const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200;
       const S=p=>[p[0]+dx,p[1]+dy];
       const meas=g.meas.map(S),fin=g.fin.map(S),o=S([0,0]),m=g.m;
@@ -441,16 +434,17 @@ function buildDXF(promo,pisos){
         dimLine(LY.gen,S([xl,yh]),S([ec[0],yh]),HO);
         dimLine(LY.gen,S([xv,yb]),S([xv,ec[1]]),HO);
       });
-      // Copetes (piezas aparte, debajo del frente)
-      cops.forEach(q=>copParts(q).forEach(pc=>{
-        const pts=pc.pts.map(S);
-        W.lwpoly(LY.ext,pts);cantoSegs(pts,pc.lado).forEach(([a,b])=>W.line(LY.canto,a,b));
-        const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
-        cota(LY.gen,pts[3],pts[2],cc);cota(LY.gen,pts[0],pts[3],cc);
-      }));
       x+=bb.w+400+700;
       rowH=Math.max(rowH,bb.h+400);
     });
+    // Copetes del piso: piezas sueltas, a continuación de los frentes
+    if(piso.copetes&&piso.copetes.length){any=true;
+      const cops=piso.copetes.map((cp,j)=>{const q=copGeom(cp,null),off=-(q.A+380)*j;return{...q,pts:q.pts.map(t=>[t[0],t[1]+off])};});
+      const bb=bbox(cops.flatMap(q=>[...q.pts,...q.pts.map(t=>[t[0]+(q.partir?COP_GAP:0),t[1]-200])]).concat([[0,150]]));
+      const dx=x-bb.minX+200,dy=rowTop-bb.maxY-200,S=p=>[p[0]+dx,p[1]+dy];
+      cops.forEach(q=>copParts(q).forEach(pc=>{const pts=pc.pts.map(S);W.lwpoly(LY.ext,pts);cantoSegs(pts,pc.lado).forEach(([a,b])=>W.line(LY.canto,a,b));const cc=[(pts[0][0]+pts[2][0])/2,(pts[0][1]+pts[2][1])/2];
+        cota(LY.gen,pts[3],pts[2],cc);cota(LY.gen,pts[0],pts[3],cc);}));
+      rowH=Math.max(rowH,bb.h+400);}
     cy=rowTop-(any?rowH:0)-400;
   }
   return W.out([['0',7],[LY.ext,7],[LY.obra,2],[LY.gen,1],[LY.enc,161],[LY.med,4],[LY.canto,30]],[['Standard',2.5,0],[DS_OBRA,HO,10],[DS_EX,H,12]]);
@@ -494,10 +488,10 @@ let fingerDraw=false;try{fingerDraw=localStorage.getItem('fc_fdraw')==='true';}c
 let drawTool='mover';          // mover | pen | goma | nota
 // Persianas: siempre recogidas al abrir un frente
 let FOLD={};
-const FOLD_OPEN={pieza:1};   // persianas abiertas por defecto
+const FOLD_OPEN={pieza:1,pfre:1};   // persianas abiertas por defecto
 const foldOff=k=>(k in FOLD)?!!FOLD[k]:!FOLD_OPEN[k];   // true = recogida
 // color propio de cada persiana
-const FOLDCOL={cfg:'#475569',med:'#2563eb',enc:'#7c3aed',cop:'#0d9488',pieza:'#16a34a',ploc:'#dc2626',pexp:'#ea580c',pisoexp:'#ea580c',sync:'#0891b2',copia:'#64748b'};
+const FOLDCOL={pfot:'#b45309',pfre:'#2563eb',cfg:'#475569',med:'#2563eb',enc:'#7c3aed',cop:'#0d9488',pieza:'#16a34a',ploc:'#dc2626',pexp:'#ea580c',pisoexp:'#ea580c',sync:'#0891b2',copia:'#64748b'};
 function foldHead(k,title){const c=FOLDCOL[k]||'#374151';return `<button type="button" class="fold ${foldOff(k)?'closed':''}" data-fold="${k}" style="color:${c};border-left:5px solid ${c};padding-left:10px;margin-left:-4px"><span>${title}</span><span class="chev2" style="color:${c}">▾</span></button>`;}
 function foldCls(k){return 'foldc'+(foldOff(k)?' closed':'');}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const k=b.dataset.fold;FOLD[k]=!foldOff(k);
@@ -506,11 +500,25 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if
     if(!foldOff(k))(k==='enc'?A.addEnc:A.addCop)();else if(h&&h.querySelector('#mbox')){encDictStop&&encDictStop();unInline();}}});
 let VIEW={z:1,tx:0,ty:0};      // zoom de la foto (dos dedos)
 const UNDO={id:null,st:[]};    // deshacer: dibujo, cotas y cruce del láser
-// Varias fotos por frente: la 1ª vive en el propio frente (f.photo/f.draw/f.notes), las demás en f.fotos[]
+// Las fotos van en el piso: pi.fotos[] = {id,photo,draw,notes}
 let PHI=0;
-function PH(){const f=F();if(!f)return null;if(PHI>0&&f.fotos&&f.fotos[PHI-1])return f.fotos[PHI-1];PHI=0;return f;}
-function allPh(f){return [f,...(f.fotos||[])].filter(x=>x&&x.photo);}
-function undoKey(){const f=F();return f?f.id+':'+PHI:null;}
+function PH(){if(route.v!=='foto')return null;const pi=PI();return (pi&&pi.fotos&&pi.fotos[route.i])||null;}
+function allPh(f){return [f,...(f.fotos||[])].filter(x=>x&&x.photo);}   // fotos antiguas guardadas en el frente
+// Todas las fotos de un piso (las del piso y, si quedara alguna, las antiguas de sus frentes)
+function allPhotos(pi){return [...(pi.fotos||[]).filter(x=>x&&x.photo),...(pi.frentes||[]).flatMap(allPh)];}
+// Pasa al piso las fotos y copetes que antes iban en cada frente
+function migrateData(){
+  for(const p of (S.promos||[])){let ch=false;
+    for(const pi of (p.pisos||[])){if(!pi.fotos){pi.fotos=[];ch=true;}if(!pi.copetes){pi.copetes=[];ch=true;}
+      for(const f of (pi.frentes||[])){
+        for(const ph of allPh(f)){const k=JSON.stringify(ph.photo);if(!pi.fotos.some(x=>JSON.stringify(x.photo)===k))pi.fotos.push({id:uid(),photo:ph.photo,draw:ph.draw||[],notes:ph.notes||[]});ch=true;}
+        if(f.photo!==undefined||f.fotos!==undefined||f.draw!==undefined||Array.isArray(f.notes)){delete f.photo;delete f.fotos;delete f.draw;if(Array.isArray(f.notes))delete f.notes;ch=true;}
+        if(f.copetes&&f.copetes.length){pi.copetes.push(...f.copetes);ch=true;}
+        if(f.copetes!==undefined){delete f.copetes;ch=true;}
+      }}
+    if(ch&&typeof Store!=='undefined'&&Store.save)Store.save(p);}
+}
+function undoKey(){return route.v==='foto'?route.pi+':'+route.i:null;}
 function undoPush(){const ph=PH();if(!ph)return;const k=undoKey();if(UNDO.id!==k){UNDO.id=k;UNDO.st=[];}
   UNDO.st.push(JSON.stringify({draw:ph.draw||[],notes:ph.notes||[]}));if(UNDO.st.length>60)UNDO.st.shift();}
 function undoRestore(o){const ph=PH();ph.draw=o.draw;if(o.notes)ph.notes=o.notes;}
@@ -650,14 +658,14 @@ const Store={
         this.gs={url:this.gs.url,token:r.token};LS.set('fc_gs',this.gs);
       }
       // fotos antiguas guardadas solo en este dispositivo -> pasan a Drive
-      for(const p of S.promos){let ch=false;for(const pi of p.pisos)for(const fr of pi.frentes)for(const f of allPh(fr))if(f.photo&&f.photo.l){const q=LS.get('fc_phq',[]);q.push(f.photo.l);LS.set('fc_phq',q);f.photo={g:f.photo.l};ch=true;}
+      for(const p of S.promos){let ch=false;for(const pi of p.pisos)for(const f of allPhotos(pi))if(f.photo&&f.photo.l){const q=LS.get('fc_phq',[]);q.push(f.photo.l);LS.set('fc_phq',q);f.photo={g:f.photo.l};ch=true;}
         if(ch){const pe=new Set(LS.get('fc_pend',[]));pe.add(p.id);LS.set('fc_pend',[...pe]);if(this.idb)await idbReq(this.idb,'promos','readwrite',s=>s.put(clone(p)));}}
       for(const id of [...new Set(LS.get('fc_phq',[]))]){
         const b=await this.localBlob(id);
         if(b){const buf=new Uint8Array(await b.arrayBuffer());let bin='';for(let i=0;i<buf.length;i+=0x8000)bin+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));
           await gsApi('photoUp',{name:id,b64:btoa(bin)});
           // la promoción que usa esta foto se vuelve a guardar para que Drive la coloque en su carpeta
-          const owner=id.endsWith('_t')?null:S.promos.find(p=>p.pisos.some(pi=>pi.frentes.some(fr=>allPh(fr).some(f=>f.photo.g===id))));
+          const owner=id.endsWith('_t')?null:S.promos.find(p=>p.pisos.some(pi=>allPhotos(pi).some(f=>f.photo.g===id)));
           if(owner){const pe=new Set(LS.get('fc_pend',[]));pe.add(owner.id);LS.set('fc_pend',[...pe]);}}
         LS.set('fc_phq',LS.get('fc_phq',[]).filter(x=>x!==id));
       }
@@ -831,19 +839,22 @@ function fileBtn(label,cls,kind){
 // ---------- Render ----------
 function render(){
   unInline();
+  try{migrateData();}catch(e){console.error(e);}
   const app=$('#app'),back=$('#back');
   if(Store.locked)return renderLock(app);
   if(route.v!=='home'&&!P())route={v:'home'};
   if(route.v==='piso'&&!PI())route={v:'promo',p:route.p};
   if(route.v==='frente'&&!F())route=PI()?{v:'piso',p:route.p,pi:route.pi}:{v:'home'};
+  if(route.v==='foto'&&!PH())route=PI()?{v:'piso',p:route.p,pi:route.pi}:{v:'home'};
   back.hidden=route.v==='home';
   if(route.v==='home')return renderHome(app);
   if(route.v==='promo')return renderPromo(app);
   if(route.v==='piso')return renderPiso(app);
   if(route.v==='frente')return renderFrente(app);
+  if(route.v==='foto')return renderFoto(app);
 }
 $('#back').onclick=()=>{
-  if(route.v==='frente')go({v:'piso',p:route.p,pi:route.pi});
+  if(route.v==='frente'||route.v==='foto')go({v:'piso',p:route.p,pi:route.pi});
   else if(route.v==='piso')go({v:'promo',p:route.p});
   else go({v:'home'});
 };
@@ -880,7 +891,7 @@ function renderPromo(app){
    <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
-    const fph=(pi.frentes.find(f=>f.photo)||{}).photo;
+    const fph=(allPhotos(pi)[0]||{}).photo;
     return `<button class="item" data-act="openPiso" data-id="${pi.id}">${fph?`<img class="thumb" data-ph="${esc(JSON.stringify(fph))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Sin pisos todavía.</div>`)+
   `<div class="card" style="margin-top:12px">${foldHead('pexp','Exportar')}<div class="${foldCls('pexp')}" data-foldc="pexp" style="margin-top:8px">
@@ -899,16 +910,41 @@ function renderPromo(app){
 
 function renderPiso(app){
   const p=P(),pi=PI();$('#ttl').textContent=pi.title;
+  const fotos=pi.fotos||[],cps=pi.copetes||[];
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
-  <button class="btn pri full" data-act="addNoPhoto" style="margin-bottom:12px">+ Añadir frente</button>
-  <h2>Frentes</h2>`+
-  (pi.frentes.length?pi.frentes.map((f,i)=>{const n=filled(f);
-    return `<button class="item" data-act="openFrente" data-id="${f.id}">${f.photo?`<span class="thumbs">${allPh(f).map(x=>`<img class="thumb" data-ph="${esc(JSON.stringify(x.photo))}" alt="">`).join('')}</span>`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}${allPh(f).length>1?' · <span style="color:var(--mut)">'+allPh(f).length+' fotos</span>':''}${f.cfg?' · <span style="color:var(--mut)">config. propia</span>':''}</div></div><span class="chev">›</span></button>`;}).join('')
-   :`<div class="empty">Sin frentes todavía. Pulsa «+ Añadir frente» y dentro añade sus fotos.</div>`)+
-  `
-   <div class="card" style="margin-top:12px">${foldHead('pisoexp','Exportar DXF del piso')}<div class="${foldCls('pisoexp')}" data-foldc="pisoexp" style="margin-top:8px"><div class="grid2"><button class="btn pri" data-act="dxfPiso">⬇ Descargar</button>${mailBtn('dxfPiso')}</div></div></div>
+  <div class="card">${foldHead('pfot','Fotos'+(fotos.length?' ('+fotos.length+')':''))}<div class="${foldCls('pfot')}" data-foldc="pfot" style="margin-top:8px">
+   ${fotos.length?`<div class="phgrid">${fotos.map((x,i)=>`<button class="phcell" data-act="openFoto" data-i="${i}"><img data-ph="${esc(JSON.stringify(x.photo))}" alt=""><span>${i+1}${(x.draw&&x.draw.length)||(x.notes&&x.notes.length)?' ✏':''}</span></button>`).join('')}</div>`:''}
+   <div class="grid2"><button class="btn" data-act="pfCam">📷 Hacer foto</button><button class="btn" data-act="pfGal">🖼 Galería</button></div></div></div>
+  <div class="card">${foldHead('pfre','Frentes'+(pi.frentes.length?' ('+pi.frentes.length+')':''))}<div class="${foldCls('pfre')}" data-foldc="pfre" style="margin-top:8px">`+
+  pi.frentes.map((f,i)=>{const n=filled(f),ne=(f.enchufes||[]).length;
+    return `<button class="item" data-act="openFrente" data-id="${f.id}" style="padding:10px"><div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}${ne?' · <span style="color:var(--mut)">'+ne+' enchufe'+(ne==1?'':'s')+'</span>':''}${f.cfg?' · <span style="color:var(--mut)">config. propia</span>':''}</div></div><span class="chev">›</span></button>`;}).join('')+
+  `<button class="btn pri full" data-act="addNoPhoto">+ Añadir frente</button></div></div>
+  <div class="card">${foldHead('cop','Copetes'+(cps.length?' ('+cps.length+')':''))}<div class="${foldCls('cop')}" data-foldc="cop" style="margin-top:4px">
+    <div class="qhrow">${qh('Remates laterales del piso. Largo = medida de pared + ajuste (−14 por defecto: 12 de grueso + 2 de holgura). Alto 45 por defecto. Salen en el DXF del piso, junto a los frentes.')}</div>
+    ${cps.map((c,i)=>{return `<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1}</div><div class="s">${esc(copDesc(c))}</div></div><span class="chev">›</span></button>`;}).join('')}
+    <div id="copHost"></div>
+    <button class="btn full" data-act="addCop">+ Añadir copete</button>
+    ${cps.length?`<div class="prev" style="margin-top:10px">${copSVG(cps)}</div>`:''}</div></div>
+   <div class="card">${foldHead('pisoexp','Exportar DXF del piso')}<div class="${foldCls('pisoexp')}" data-foldc="pisoexp" style="margin-top:8px"><div class="grid2"><button class="btn pri" data-act="dxfPiso">⬇ Descargar</button>${mailBtn('dxfPiso')}</div></div></div>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPiso">Borrar piso</button>`;
   app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.thumbURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
+  setTimeout(()=>{if(route.v!=='piso'||inlineOpen)return;if(!foldOff('cop'))A.addCop();},0);
+}
+
+function renderFoto(app){
+  const p=P(),pi=PI(),i=route.i,ph=PH(),n=(pi.fotos||[]).length;
+  $('#ttl').textContent=pi.title+' · foto '+(i+1);
+  app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>Foto ${i+1} de ${n}</b><span style="display:flex;gap:6px"><button class="btn sm" data-act="fotoPrev" ${i>0?'':'disabled'}>‹</button><button class="btn sm" data-act="fotoNext" ${i<n-1?'':'disabled'}>›</button></span></div></div>
+  <div><div class="dtools"><button class="btn sm ${drawTool==='mover'?'on':''}" data-act="dmover">✋ Mover</button>${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor&&drawTool==='pen'?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
+     ${[[1.5,'Muy fino'],[3,'Fino'],[7,'Grueso']].map(([w,t])=>`<button class="btn sm ${drawTool==='pen'&&drawW===w?'on':''}" data-act="dw" data-w="${w}">${t}</button>`).join('')}
+     <button class="btn sm ${drawTool==='goma'?'on':''}" data-act="dgoma">🧽 Goma</button>
+     <button class="btn sm ${drawTool==='nota'?'on':''}" data-act="dnota">📝 Nota</button>
+     <button class="btn sm ${fingerDraw?'on':''}" data-act="dfinger" title="Permitir dibujar con el dedo">☝ Dedo</button>
+     <button class="btn sm" data-act="dundo">↶ Deshacer</button><button class="btn sm dang" data-act="dclear">Borrar dibujo</button>
+     ${VIEW.z>1.01?'<button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button>':''}${qh('✋ Mover: no pinta; arrastra para moverte por la foto ampliada. Colores y grosores: dibujar. 🧽 Goma: toca o arrastra sobre un trazo para borrarlo. 📝 Nota: toca la foto para añadir una nota; toca una nota para editarla. Solo el Apple Pencil dibuja y borra; con el dedo te mueves por la foto o la página, y con dos dedos acercas o alejas. ☝ Dedo: permite dibujar también con el dedo (para el móvil).')}</div><div class="cvwrap"><canvas id="cv"></canvas></div></div>
+  <div class="grid2" style="margin-top:10px"><button class="btn" data-act="photoCam">📷 Cambiar foto</button><button class="btn" data-act="photoGal">🖼 Cambiar (galería)</button></div>
+  <div class="grid2" style="margin-top:8px"><button class="btn" data-act="photoJpg">⬇ Guardar foto anotada</button><button class="btn dang" data-act="phDel">Quitar foto</button></div>`;
+  setupCanvas();
 }
 
 function crossSVG(){
@@ -929,17 +965,6 @@ function renderFrente(app){
   `<div class="card">${foldHead('cfg','Configuración de descuentos'+(f.cfg?' · propios':''))}<div class="${foldCls('cfg')}" data-foldc="cfg" style="margin-top:8px">
      <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt((f.cfg?f.cfg.cuts:p.cuts)[k]))}"></label>`).join('')}</div>
      <div class="grid2" style="margin-top:8px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div></div></div>`+
-  (f.photo?`<div class="phstrip">${allPh(f).map((x,i)=>`<button class="btn sm ${i===PHI?'pri':''}" data-act="phSel" data-i="${i}">Foto ${i+1}</button>`).join('')}<button class="btn sm" data-act="phAddCam">+ 📷 Foto</button><button class="btn sm" data-act="phAddGal">+ 🖼</button></div>
-   <div class="dtools"><button class="btn sm ${drawTool==='mover'?'on':''}" data-act="dmover">✋ Mover</button>${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor&&drawTool==='pen'?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
-     ${[[1.5,'Muy fino'],[3,'Fino'],[7,'Grueso']].map(([w,t])=>`<button class="btn sm ${drawTool==='pen'&&drawW===w?'on':''}" data-act="dw" data-w="${w}">${t}</button>`).join('')}
-     <button class="btn sm ${drawTool==='goma'?'on':''}" data-act="dgoma">🧽 Goma</button>
-     <button class="btn sm ${drawTool==='nota'?'on':''}" data-act="dnota">📝 Nota</button>
-     <button class="btn sm ${fingerDraw?'on':''}" data-act="dfinger" title="Permitir dibujar con el dedo">☝ Dedo</button>
-     <button class="btn sm" data-act="dundo">↶ Deshacer</button><button class="btn sm dang" data-act="dclear">Borrar dibujo</button>
-     ${VIEW.z>1.01?'<button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button>':''}${qh('✋ Mover: no pinta; arrastra para moverte por la foto ampliada. Colores y grosores: dibujar. 🧽 Goma: toca o arrastra sobre un trazo para borrarlo. 📝 Nota: toca la foto para añadir una nota; toca una nota para editarla. Solo el Apple Pencil dibuja y borra; con el dedo te mueves por la foto o la página, y con dos dedos acercas o alejas. ☝ Dedo: permite dibujar también con el dedo (para el móvil).')}</div>
-   <div class="cvwrap"><canvas id="cv"></canvas></div>
-   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar esta foto</button><button class="btn sm dang" data-act="phDel">🗑 Quitar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
-  :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
   `<div class="card"><div style="font-weight:600;margin:0 0 6px -4px;color:#b45309;border-left:5px solid #b45309;padding-left:10px">Notas</div><textarea class="in" id="frNota" rows="3" placeholder="Notas de este frente…" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit">${esc(f.nota||'')}</textarea></div>`+
   `<div class="card">${foldHead('med','Medidas desde el láser (mm)')}<div class="${foldCls('med')}" data-foldc="med" style="margin-top:4px"><div class="qhrow">${qh('Cómo medir: láser en cruz sobre la encimera. Desde la línea vertical se mide a la pared izquierda y derecha, arriba y abajo. Desde la horizontal, a cada lado, hasta el techo (o mueble alto) y hasta el mueble de abajo. Todo en mm. Las casillas del mismo color son pareja: el botón ⇅ / ⇄ calca la medida de su pareja.')}</div>
    <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn sm pri" data-act="dictStart" style="flex:1 1 60%">🎤 Dictar medidas</button><button class="btn sm" data-act="kbStart" style="flex:1 1 30%">⌨ Dictar con teclado</button><button class="btn sm" data-act="orderEdit">⚙ Orden</button>
@@ -957,11 +982,6 @@ function renderFrente(app){
     ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
     <div id="encHost"></div>
     <button class="btn full" data-act="addEnc">+ Añadir enchufe</button></div></div>
-   <div class="card">${foldHead('cop','Copetes'+((f.copetes||[]).length?' ('+f.copetes.length+')':''))}<div class="${foldCls('cop')}" data-foldc="cop" style="margin-top:4px">
-    <div class="qhrow">${qh('Remate lateral. Largo = pared en obra + ajuste (−14 por defecto: 12 de grosor del frente + 2 de holgura).')}</div>
-    ${(f.copetes||[]).map((cp,i)=>`<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1} · Copete</div><div class="s">${esc(copDesc(cp))}</div></div><span class="chev">›</span></button>`).join('')}
-    <div id="copHost"></div>
-    <button class="btn full" data-act="addCop">+ Añadir copete</button></div></div>
    
    <div class="card">${foldHead('pieza','Pieza resultante')}<div class="${foldCls('pieza')}" data-foldc="pieza" style="margin-top:6px"><div class="note" id="cutnote" style="margin-bottom:8px"></div><div id="prev" class="prev"></div></div></div>
    ${mailChk()}
@@ -999,29 +1019,17 @@ function renderFrente(app){
   app.querySelectorAll('[data-fset]').forEach(i=>i.oninput=()=>{const f=F(),p=P();if(!f||!p)return;const v=num(i.value);if(v!=null&&v>0){ownCfg(f)[i.dataset.fset]=v;Store.save(p);renderPrev();}});
   renderPrev();
   if(Dict)dictBanner();
-  if(f.photo)setupCanvas();
   lzUI();
-  setTimeout(()=>{if(route.v!=='frente'||inlineOpen)return;if(!foldOff('cop'))A.addCop();else if(!foldOff('enc'))A.addEnc();},0);
+  setTimeout(()=>{if(route.v!=='frente'||inlineOpen)return;if(!foldOff('enc'))A.addEnc();},0);
 }
 
 function renderPrev(){
   const el=$('#prev');if(!el)return;const p=P(),f=F(),cf=cfgOf(p,f),g=geom(f,cf.cuts);
   const cn=$('#cutnote');if(cn){const e=esqOf(f);cn.textContent=`Descuentos: arriba ${fmt(cf.cuts.t)}, abajo ${fmt(cf.cuts.b)}, izq ${fmt(cf.cuts.l)}, dcha ${fmt(cf.cuts.r)} mm`+(f.cfg?' (propios de este frente)':'')+(e.l||e.r?' · esquinas: '+[e.l?'izq '+fAj(e.l):'',e.r?'dcha '+fAj(e.r):''].filter(Boolean).join(', '):'');}
-  if(!g){const cps=f.copetes||[];
-    // Sin frente: se dibujan solo los copetes
-    let svg='';
-    if(cps.length){
-      const mL=Math.max(...cps.map(cp=>copGeom(cp,null).L)),cops=cps.map((cp,j)=>{const q=copGeom(cp,null),off=-(q.A+Math.max(160,mL/22*2.4))*j;return{...q,j,pts:q.pts.map(t=>[t[0],t[1]+off])};});
-      const bb=bbox(cops.flatMap(q=>[...q.pts,...q.pts.map(t=>[t[0]+(q.partir?COP_GAP:0),t[1]-60])])),fs=Math.max(bb.w/22,20),pad=fs*1.5;
-      const pt=a=>a.map(q=>`${q[0]},${-q[1]}`).join(' ');
-      svg=`<svg viewBox="${bb.minX-pad} ${-bb.maxY-pad} ${bb.w+2*pad} ${bb.h+2*pad}" style="width:100%;max-height:260px">${cops.map(q=>copParts(q).map(pc=>`<polygon points="${pt(pc.pts)}" fill="#bae6fd" fill-opacity=".7" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>${cantoSegs(pc.pts,pc.lado).map(([a,b])=>`<line x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" stroke="#f97316" stroke-width="4" vector-effect="non-scaling-stroke"/>`).join('')}`).join('')+`<text x="${(q.pts[0][0]+q.pts[1][0]+(q.partir?COP_GAP:0))/2}" y="${-q.pts[2][1]+fs*0.9}" font-size="${fs*0.8}" text-anchor="middle" dominant-baseline="middle" fill="#075985" font-weight="700">C${q.j+1} · ${copTxt(q)}</text>`).join('')}</svg>`;
-    }
-    el.innerHTML=`<div class="empty">Faltan ${8-filled(f)} medida${8-filled(f)==1?'':'s'} para dibujar la pieza.${cps.length?' El DXF saldrá solo con los copetes.':''}</div>`+svg+
-      (cps.length?`<table class="dims">${cps.map((cp,j)=>{const q=copGeom(cp,null);return `<tr><td>Copete C${j+1}${q.falta?' (falta la medida de pared, dibujado a 600)':''}</td><td>${copTxt(q)}</td></tr>`;}).join('')}</table>`:'');
-    return;}
+  if(!g){el.innerHTML=`<div class="empty">Faltan ${8-filled(f)} medida${8-filled(f)==1?'':'s'} para dibujar la pieza.</div>`;return;}
   const R=cf.dia/2,encs=(f.enchufes||[]).map((e,i)=>({i,e,g:encGeom(e,cf)})).filter(x=>x.g);
   const fs0=Math.max(bbox(g.meas).w,bbox(g.meas).h)/18;
-  const cops=(f.copetes||[]).map((cp,j)=>{const q=copGeom(cp,g),off=-(q.A+Math.max(250,fs0*2.2))*j;return{...q,j,pts:q.pts.map(t=>[t[0],t[1]+off])};});
+  const cops=[].map((cp,j)=>{const q=copGeom(cp,g),off=-(q.A+Math.max(250,fs0*2.2))*j;return{...q,j,pts:q.pts.map(t=>[t[0],t[1]+off])};});
   const bb=bbox([...g.meas,...g.fin,[0,0],...encs.flatMap(x=>x.g.pts),...cops.flatMap(q=>q.pts.map(t=>[t[0],t[1]-120]))]),sz=Math.max(bb.w,bb.h),pad=sz*0.12,fs=sz/18;
   const out=encs.filter(x=>x.g.pts.some(q=>!inPoly(q,g.fin)));
   const pt=a=>a.map(q=>`${q[0]},${-q[1]}`).join(' ');
@@ -1064,6 +1072,17 @@ function renderPrev(){
    ${cops.map(q=>`<tr><td>Copete C${q.j+1}${q.falta?' (falta la medida de pared, dibujado a 600)':''}</td><td>${copTxt(q)}</td></tr>`).join('')}</table>`;
 }
 
+// Dibujo de los copetes del piso
+function copSVG(cps){
+    let svg='';
+    if(cps.length){
+      const mL=Math.max(...cps.map(cp=>copGeom(cp,null).L)),cops=cps.map((cp,j)=>{const q=copGeom(cp,null),off=-(q.A+Math.max(160,mL/22*2.4))*j;return{...q,j,pts:q.pts.map(t=>[t[0],t[1]+off])};});
+      const bb=bbox(cops.flatMap(q=>[...q.pts,...q.pts.map(t=>[t[0]+(q.partir?COP_GAP:0),t[1]-60])])),fs=Math.max(bb.w/22,20),pad=fs*1.5;
+      const pt=a=>a.map(q=>`${q[0]},${-q[1]}`).join(' ');
+      svg=`<svg viewBox="${bb.minX-pad} ${-bb.maxY-pad} ${bb.w+2*pad} ${bb.h+2*pad}" style="width:100%;max-height:260px">${cops.map(q=>copParts(q).map(pc=>`<polygon points="${pt(pc.pts)}" fill="#bae6fd" fill-opacity=".7" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>${cantoSegs(pc.pts,pc.lado).map(([a,b])=>`<line x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" stroke="#f97316" stroke-width="4" vector-effect="non-scaling-stroke"/>`).join('')}`).join('')+`<text x="${(q.pts[0][0]+q.pts[1][0]+(q.partir?COP_GAP:0))/2}" y="${-q.pts[2][1]+fs*0.9}" font-size="${fs*0.8}" text-anchor="middle" dominant-baseline="middle" fill="#075985" font-weight="700">C${q.j+1} · ${copTxt(q)}</text>`).join('')}</svg>`;
+    }
+    return svg;
+}
 // ---------- Foto anotada ----------
 let hits=[],curImg=null;
 // Cotas: cada flecha sale del rayo. f.cp[k]={o,e}: o = posición paralela, e = punta (fracciones de la foto)
@@ -1542,7 +1561,7 @@ function bigChoice(sel,opts,onch){
   sel.addEventListener('change',paint);paint();return bx;
 }
 async function copForm(i){
-  const p=P(),f=F();f.copetes=f.copetes||[];
+  const p=P(),f=PI();f.copetes=f.copetes||[];
   const c=i==null?{lado:(f.copetes.some(x=>x.lado==='izq')?'dcha':'izq'),aj:'-14',alt:'45',largo:''}:f.copetes[i];
   const aj0=copAj(c),ajTxt=(aj0<0?'-':'+')+fmt(Math.abs(aj0));
   const pr=modal({title:i==null?'Añadir copete':'Copete C'+(i+1),fields:[
@@ -1694,7 +1713,7 @@ async function offer(base,files){
 }
 async function photoFiles(pi,prefix){
   const out=[];
-  for(let i=0;i<pi.frentes.length;i++){const f=pi.frentes[i],phs=allPh(f);for(let k=0;k<phs.length;k++){const j=await annotatedJpg(phs[k]);if(j)out.push({name:prefix+safe(pi.title)+' - '+safe(f.name||'Frente '+(i+1))+(phs.length>1?' - foto '+(k+1):'')+'.jpg',data:j});}}
+  const phs=allPhotos(pi);for(let k=0;k<phs.length;k++){const j=await annotatedJpg(phs[k]);if(j)out.push({name:prefix+safe(pi.title)+' - foto '+(k+1)+'.jpg',data:j});}
   return out;
 }
 
@@ -1937,14 +1956,12 @@ const A={
   addCam(){pickPhoto('#fCam',null);},addGal(){pickPhoto('#fGal',null);},
   addNoPhoto(){newFrente(null);},
   openFrente(d){go({v:'frente',p:route.p,pi:route.pi,f:d.id});},
-  photoCam(){pickPhoto('#fCam',F());},photoGal(){pickPhoto('#fGal',F());},
-  phAddCam(){pickPhoto('#fCam',F(),true);},phAddGal(){pickPhoto('#fGal',F(),true);},
-  phSel(d){PHI=+d.i;VIEW={z:1,tx:0,ty:0};render();},
-  async phDel(){const f=F();const n=allPh(f).length;if(!await confirmDel('la foto '+(PHI+1)+' (con su dibujo y notas)'))return;
-    if(PHI>0){f.fotos.splice(PHI-1,1);PHI--;}
-    else if(f.fotos&&f.fotos.length){const nx=f.fotos.shift();f.photo=nx.photo;f.draw=nx.draw||[];f.notes=nx.notes||[];}
-    else{f.photo=null;f.draw=[];f.notes=[];}
-    UNDO.id=null;VIEW={z:1,tx:0,ty:0};Store.save(P());render();},
+  photoCam(){pickPhoto('#fCam',{rep:route.i});},photoGal(){pickPhoto('#fGal',{rep:route.i});},
+  pfCam(){pickPhoto('#fCam',{add:true});},pfGal(){pickPhoto('#fGal',{add:true});},
+  openFoto(d){go({v:'foto',p:route.p,pi:route.pi,i:+d.i});},
+  fotoPrev(){if(route.i>0)go({...route,i:route.i-1});},fotoNext(){if(route.i<(PI().fotos||[]).length-1)go({...route,i:route.i+1});},
+  async phDel(){const pi=PI();if(!await confirmDel('la foto '+(route.i+1)+' (con su dibujo y notas)'))return;
+    pi.fotos.splice(route.i,1);UNDO.id=null;Store.save(P());go({v:'piso',p:route.p,pi:route.pi});},
   async renFrente(){const f=F(),pi=PI(),t=await askText('Renombrar frente','Nombre',f.name||('Frente '+(pi.frentes.indexOf(f)+1)));if(t){f.name=t;Store.save(P());render();}},
   async delFrente(){const p=P(),pi=PI(),f=F();if(!await confirmDel('este frente'))return;pi.frentes=pi.frentes.filter(x=>x!==f);Store.save(p);go({v:'piso',p:p.id,pi:pi.id});},
   mode(d){mode=d.m;render();},
@@ -1970,31 +1987,31 @@ const A={
   dundo(){undoDo();},
   async dclear(){const f=PH();if(!f.draw||!f.draw.length)return;if(!await confirmDel('todo el dibujo de esta foto'))return;undoPush();f.draw=[];Store.save(P());drawCanvas();},
   async dxfFrente(){const p=P(),pi=PI(),f=F();if(!exportable(f,p)){toast('Faltan medidas');return;}
-    const one={...pi,frentes:[f]},nm=safe(pi.title)+' - '+safe(f.name||'Frente '+(pi.frentes.indexOf(f)+1));
+    const one={...pi,frentes:[f],copetes:[]},nm=safe(pi.title)+' - '+safe(f.name||'Frente '+(pi.frentes.indexOf(f)+1));
     const files=[{name:nm+'.dxf',data:buildDXF(p,[one])}];
-    {const phs=allPh(f);for(let k=0;k<phs.length;k++){const j=await annotatedJpg(phs[k]);if(j)files.push({name:nm+(phs.length>1?' - foto '+(k+1):'')+'.jpg',data:j});}}
+
     await offer(safe(p.title)+' - '+nm,inClaude?files:files.slice(0,1));afterExport(safe(p.title)+' - '+nm,files.slice(0,1));},
   async copyDxf(){const p=P(),pi=PI(),f=F();if(!exportable(f,p)){toast('Faltan medidas');return;}
     try{await navigator.clipboard.writeText(buildDXF(p,[{...pi,frentes:[f]}]));toast('DXF copiado. Pégalo en un archivo .dxf');}catch(e){toast('No se pudo copiar');}},
-  async photoJpg(){const pi=PI(),f=F();const j=await annotatedJpg(PH());if(!j)return;offer('foto',[{name:safe(pi.title)+' - '+safe(f.name||'Frente')+(PHI?' - foto '+(PHI+1):'')+'.jpg',data:j}]);},
-  async dxfPiso(){const p=P(),pi=PI();if(!pi.frentes.some(f=>exportable(f,p))){toast('Ningún frente tiene las 8 medidas ni copetes');return;}
+  async photoJpg(){const pi=PI();const j=await annotatedJpg(PH());if(!j)return;offer('foto',[{name:safe(pi.title)+' - foto '+(route.i+1)+'.jpg',data:j}]);},
+  async dxfPiso(){const p=P(),pi=PI();if(!pisoExportable(pi,p)){toast('Ningún frente tiene las 8 medidas ni hay copetes');return;}
     toast('Preparando…');const files=[{name:safe(pi.title)+'.dxf',data:buildDXF(p,[pi])},...(await photoFiles(pi,'fotos/'))];
     await offer(safe(p.title)+' - '+safe(pi.title),files);afterExport(safe(p.title)+' - '+safe(pi.title),files.filter(f=>/\.dxf$/i.test(f.name)));},
   async dxfAllPisos(){const p=P();
-    const ok=p.pisos.filter(pi=>pi.frentes.some(f=>exportable(f,p)));
+    const ok=p.pisos.filter(pi=>pisoExportable(pi,p));
     if(!ok.length){toast('Ningún frente tiene las 8 medidas ni copetes');return;}
     const used={},files=ok.map(pi=>{let n=safe(pi.title);used[n]=(used[n]||0)+1;if(used[n]>1)n+=' ('+used[n]+')';return{name:n+'.dxf',data:buildDXF(p,[pi])};});
     const sin=p.pisos.length-ok.length;
     await offer(safe(p.title)+' - DXF pisos',files);afterExport(safe(p.title)+' - DXF pisos',files);
     if(sin)setTimeout(()=>toast(sin+' piso'+(sin>1?'s':'')+' sin medidas completas no incluido'+(sin>1?'s':'')),2800);},
-  async dxfPromo(){const p=P();if(!p.pisos.some(pi=>pi.frentes.some(f=>exportable(f,p)))){toast('Ningún frente tiene las 8 medidas ni copetes');return;}
+  async dxfPromo(){const p=P();if(!p.pisos.some(pi=>pisoExportable(pi,p))){toast('Ningún frente tiene las 8 medidas ni copetes');return;}
     toast('Preparando…');const files=[];
-    for(const pi of p.pisos){if(pi.frentes.some(f=>exportable(f,p)))files.push({name:safe(pi.title)+'.dxf',data:buildDXF(p,[pi])});files.push(...await photoFiles(pi,'fotos/'));}
+    for(const pi of p.pisos){if(pisoExportable(pi,p))files.push({name:safe(pi.title)+'.dxf',data:buildDXF(p,[pi])});files.push(...await photoFiles(pi,'fotos/'));}
     files.unshift({name:'_TODOS LOS PISOS.dxf',data:buildDXF(p,p.pisos)});
     await offer(safe(p.title),files);afterExport(safe(p.title)+' - DXF',files.filter(f=>/\.dxf$/i.test(f.name)));},
   async exportAll(){
     toast('Preparando copia…');const photos={};
-    if(incFotos)for(const p of S.promos)for(const pi of p.pisos)for(const fr of pi.frentes)for(const f of allPh(fr)){
+    if(incFotos)for(const p of S.promos)for(const pi of p.pisos)for(const f of allPhotos(pi)){
       try{const u=await Store.photoURL(f.photo);if(!u)continue;const b=await (await fetch(u)).blob();
         photos[JSON.stringify(f.photo)]=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(b);});}catch(e){}}
     const d=new Date(),ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -2006,19 +2023,17 @@ $('#app').addEventListener('click',async e=>{const mb=e.target.closest('[data-ma
   const b=e.target.closest('[data-act]');if(!b)return;const fn=A[b.dataset.act];if(fn)fn(b.dataset);});
 
 let photoTarget=null;
-function pickPhoto(sel,frente,extra){photoTarget=frente?{f:frente.id,extra:!!extra,idx:PHI}:{nuevo:true};const i=$(sel);i.value='';i.click();}
+function pickPhoto(sel,t){photoTarget={...t,pi:route.pi};const i=$(sel);i.value='';i.click();}
 async function onPhoto(e){
   const file=e.target.files&&e.target.files[0];if(!file||!photoTarget)return;
   toast('Guardando foto…');
   try{
     const blob=await compress(file);const ref=await Store.savePhoto(blob);
-    if(photoTarget.nuevo)newFrente(ref);
-    else{const f=PI()&&PI().frentes.find(x=>x.id===photoTarget.f);
-      if(f){
-        if(photoTarget.extra&&f.photo){(f.fotos=f.fotos||[]).push({photo:ref,draw:[],notes:[]});PHI=f.fotos.length;}
-        else if(photoTarget.idx>0&&f.fotos&&f.fotos[photoTarget.idx-1]){f.fotos[photoTarget.idx-1].photo=ref;}
-        else f.photo=ref;
-        VIEW={z:1,tx:0,ty:0};Store.save(P());render();}}
+    const pi=PI();
+    if(pi&&pi.id===photoTarget.pi){pi.fotos=pi.fotos||[];
+      if(photoTarget.rep!=null&&pi.fotos[photoTarget.rep]){pi.fotos[photoTarget.rep].photo=ref;VIEW={z:1,tx:0,ty:0};Store.save(P());render();}
+      else{pi.fotos.push({id:uid(),photo:ref,draw:[],notes:[]});Store.save(P());
+        if(route.v==='piso'){FOLD.pfot=false;render();}else render();}}
     toast('Foto guardada');
   }catch(err){console.error(err);toast('No se pudo leer la foto');}
   photoTarget=null;
@@ -2026,7 +2041,7 @@ async function onPhoto(e){
 $('#fCam').onchange=onPhoto;$('#fGal').onchange=onPhoto;
 function newFrente(ref){
   const p=P(),pi=PI();
-  const f={id:uid(),name:'Frente '+(pi.frentes.length+1),photo:ref,cx:.5,cy:.55,m:{},notes:[],enchufes:[]};
+  const f={id:uid(),name:'Frente '+(pi.frentes.length+1),cx:.5,cy:.55,m:{},enchufes:[]};
   pi.frentes.push(f);Store.save(p);go({v:'frente',p:p.id,pi:pi.id,f:f.id});
 }
 async function onImport(e){
@@ -2037,10 +2052,12 @@ async function onImport(e){
     if(!r.v)return;toast('Importando…');
     const map={};
     if(incFotos)for(const [k,du] of Object.entries(d.photos||{})){try{const b=await (await fetch(du)).blob();map[k]=await Store.savePhoto(b);}catch(_){}}
-    const oldPh={};for(const op of S.promos)for(const pi of op.pisos)for(const f of pi.frentes){if(f.photo)oldPh[f.id]=f.photo;(f.fotos||[]).forEach((x,i)=>{if(x.photo)oldPh[f.id+':'+i]=x.photo;});}
+    const oldPh={};for(const op of S.promos)for(const pi of op.pisos){(pi.fotos||[]).forEach(x=>{if(x.photo&&x.id)oldPh['pf:'+x.id]=x.photo;});}
+    for(const op of S.promos)for(const pi of op.pisos)for(const f of pi.frentes){if(f.photo)oldPh[f.id]=f.photo;(f.fotos||[]).forEach((x,i)=>{if(x.photo)oldPh[f.id+':'+i]=x.photo;});}
     for(const p of d.promos){
       for(const pi of p.pisos||[])for(const f of pi.frentes||[]){const k=f.photo?JSON.stringify(f.photo):null;f.photo=(k&&map[k])||oldPh[f.id]||null;
         f.fotos=(f.fotos||[]).map((x,i)=>{const kk=x.photo?JSON.stringify(x.photo):null;return{...x,photo:(kk&&map[kk])||oldPh[f.id+':'+i]||null,draw:x.draw||[],notes:x.notes||[]};}).filter(x=>x.photo);f.m=f.m||{};f.notes=f.notes||[];f.draw=f.draw||[];f.enchufes=f.enchufes||[];}
+      for(const pi of p.pisos||[])pi.fotos=(pi.fotos||[]).map(x=>{const kk=x.photo?JSON.stringify(x.photo):null;return{...x,photo:(kk&&map[kk])||oldPh['pf:'+x.id]||null,draw:x.draw||[],notes:x.notes||[]};}).filter(x=>x.photo);
       p.cuts=p.cuts||{t:2,b:12,l:2,r:2};
       S.promos=S.promos.filter(x=>x.id!==p.id);S.promos.push(p);Store.save(p);
     }
@@ -2051,7 +2068,7 @@ $('#fImp').onchange=onImport;
 $('#app').addEventListener('change',e=>{
   const i=e.target.closest('input[data-file]');if(!i)return;const k=i.dataset.file;
   if(k==='imp')return onImport(e);
-  photoTarget=k.endsWith('-new')?{nuevo:true}:{f:route.f};onPhoto(e);
+  photoTarget={add:true,pi:route.pi};onPhoto(e);
 });
 
 setSync();
