@@ -55,6 +55,7 @@ input.in.miss{background:#fff7ed;border-color:#fdba74}
 #cv{transform-origin:0 0;display:block}
 #mbox.inlinebox{background:#f9fafb;border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
 #mbox.inlinebox h3{font-size:16px;margin:0 0 8px}
+#encHost:not(:empty)+button,#copHost:not(:empty)+button{display:none}
 #mbox.inlinebox .btns{display:flex;gap:8px;margin-top:10px}#mbox.inlinebox .btns .btn{flex:1;padding:12px}
 .qh{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1.5px solid #9ca3af;background:#fff;color:#4b5563;font:700 13px/1 system-ui,sans-serif;padding:0;margin-left:6px;vertical-align:middle;flex:none;cursor:pointer}
 .qhrow{display:flex;justify-content:flex-end;margin:-2px 0 6px}
@@ -498,7 +499,9 @@ const foldOff=k=>(k in FOLD)?!!FOLD[k]:!FOLD_OPEN[k];   // true = recogida
 function foldHead(k,title){return `<button type="button" class="fold ${foldOff(k)?'closed':''}" data-fold="${k}"><span>${title}</span><span class="chev2">▾</span></button>`;}
 function foldCls(k){return 'foldc'+(foldOff(k)?' closed':'');}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const k=b.dataset.fold;FOLD[k]=!foldOff(k);
-  b.classList.toggle('closed',foldOff(k));const c=document.querySelector('[data-foldc="'+k+'"]');if(c)c.classList.toggle('closed',foldOff(k));});
+  b.classList.toggle('closed',foldOff(k));const c=document.querySelector('[data-foldc="'+k+'"]');if(c)c.classList.toggle('closed',foldOff(k));
+  if((k==='enc'||k==='cop')&&typeof A!=='undefined'){const h=$(k==='enc'?'#encHost':'#copHost');
+    if(!foldOff(k))(k==='enc'?A.addEnc:A.addCop)();else if(h&&h.querySelector('#mbox')){encDictStop&&encDictStop();unInline();}}});
 let VIEW={z:1,tx:0,ty:0};      // zoom de la foto (dos dedos)
 const UNDO={id:null,st:[]};    // deshacer: dibujo, cotas y cruce del láser
 // Varias fotos por frente: la 1ª vive en el propio frente (f.photo/f.draw/f.notes), las demás en f.fotos[]
@@ -782,6 +785,7 @@ function modal({title,text,fields=[],buttons}){
   return new Promise(res=>{
     const box=$('#mbox');
     // formulario dentro de la propia persiana (enchufes / copetes) en lugar de ventana
+    if(!host&&inlineOpen)unInline();   // una ventana normal nunca se pinta dentro de una persiana
     if(host){unInline();host.appendChild(box);box.classList.add('inlinebox');inlineOpen=true;setTimeout(()=>{try{host.scrollIntoView({block:'nearest',behavior:'smooth'});}catch(_){}},50);}
     box.innerHTML=`<h3>${esc(title||'')}</h3>${text?`<p class="note" style="font-size:15px">${esc(text)}</p>`:''}`+
       fields.map((f,i)=>`<div class="fld"><label>${esc(f.label||'')}</label>${f.sel?`<select class="in" data-i="${i}">${f.sel.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(f.value)?'selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input class="in" data-i="${i}" type="${f.type||'text'}" ${f.num?'inputmode="decimal"':''} value="${esc(f.value==null?'':f.value)}" placeholder="${esc(f.ph||'')}">`}</div>`).join('')+
@@ -939,6 +943,8 @@ function renderFrente(app){
    <div class="row" style="margin-bottom:4px"><button class="btn sm" id="lzBtn" data-act="lzCon" style="flex:1">📏 Conectar láser</button><button class="btn sm pri" id="lzMed" data-act="lzMed" style="display:none">Medir</button></div>
    <div class="note" id="lzSt" style="margin-bottom:10px">${Laser.conectado()?'Láser conectado. Toca una casilla (o una cifra de la foto) para elegir dónde cae la siguiente medida.':''}</div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div>
+   <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><div style="display:flex;align-items:center;font-weight:600;margin-bottom:6px">Encuentro de esquinas${qh('Encuentro con otro frente en la esquina. +14 alarga la pieza 14 mm por ese lado; −14 la acorta. Vacío = nada. Se suma a los descuentos normales.')}</div>
+    <div class="grid2">${[['l','⬅ Izquierda'],['r','Derecha ➡']].map(([k,t])=>`<label class="note">${t}<span style="display:flex;gap:6px;align-items:center"><input class="in" inputmode="text" data-esq="${k}" value="${esc((f.esq&&f.esq[k])||'')}" placeholder="p. ej. +14"><button type="button" class="btn sm" data-esqsg="${k}" style="flex:none;width:44px;font-size:18px;font-weight:700">±</button></span></label>`).join('')}</div></div>
    <button class="btn pri full" data-act="saveFrente" style="margin-top:10px">💾 Guardar medidas</button></div></div>
    <div class="card">${foldHead('enc','Enchufes'+((f.enchufes||[]).length?' ('+f.enchufes.length+')':''))}<div class="${foldCls('enc')}" data-foldc="enc" style="margin-top:4px">
     <div class="qhrow">${qh('Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø'+fmt(cfgOf(p,f).dia)+', separación '+fmt(cfgOf(p,f).sep)+' mm.')}</div>
@@ -950,9 +956,7 @@ function renderFrente(app){
     ${(f.copetes||[]).map((cp,i)=>`<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1} · Copete</div><div class="s">${esc(copDesc(cp))}</div></div><span class="chev">›</span></button>`).join('')}
     <div id="copHost"></div>
     <button class="btn full" data-act="addCop">+ Añadir copete</button></div></div>
-   <div class="card">${foldHead('esq','Encuentro de esquinas'+((()=>{const e=esqOf(f);return e.l||e.r?' · '+[e.l?'izq '+fAj(e.l):'',e.r?'dcha '+fAj(e.r):''].filter(Boolean).join(', '):'';})()))}<div class="${foldCls('esq')}" data-foldc="esq" style="margin-top:8px">
-    <div class="qhrow">${qh('Encuentro con otro frente en la esquina. +14 alarga la pieza 14 mm por ese lado; −14 la acorta. Vacío = nada. Se suma a los descuentos normales.')}</div>
-    <div class="grid2">${[['l','⬅ Izquierda'],['r','Derecha ➡']].map(([k,t])=>`<label class="note">${t}<span style="display:flex;gap:6px;align-items:center"><input class="in" inputmode="text" data-esq="${k}" value="${esc((f.esq&&f.esq[k])||'')}" placeholder="p. ej. +14"><button type="button" class="btn sm" data-esqsg="${k}" style="flex:none;width:44px;font-size:18px;font-weight:700">±</button></span></label>`).join('')}</div></div></div>
+   
    <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de descuentos</div>
     <div style="display:flex;align-items:center"><label class="chk" style="flex:1"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Valores por defecto</label>${qh('Marcado: descuentos arriba 2, abajo 12, izquierda 2 y derecha 2 mm; enchufes Ø68 con 70 mm entre ejes. Desmarca para poner valores distintos en este frente.')}</div>
     ${f.cfg?`
@@ -973,7 +977,7 @@ function renderFrente(app){
   });
   // encuentro de esquinas
   const esqSet=(k,v)=>{const f=F(),p=P();if(!f||!p)return;f.esq=f.esq||{};f.esq[k]=v;Store.save(p);renderPrev();
-    const h=app.querySelector('[data-fold="esq"] span');const e=esqOf(f);if(h)h.textContent='Encuentro de esquinas'+(e.l||e.r?' · '+[e.l?'izq '+fAj(e.l):'',e.r?'dcha '+fAj(e.r):''].filter(Boolean).join(', '):'');};
+    const h=null;const e=esqOf(f);if(h)h.textContent='Encuentro de esquinas'+(e.l||e.r?' · '+[e.l?'izq '+fAj(e.l):'',e.r?'dcha '+fAj(e.r):''].filter(Boolean).join(', '):'');};
   app.querySelectorAll('[data-esq]').forEach(i=>i.oninput=()=>esqSet(i.dataset.esq,i.value.trim()));
   app.querySelectorAll('[data-esqsg]').forEach(b=>b.onclick=e=>{e.preventDefault();const k=b.dataset.esqsg,i=app.querySelector(`[data-esq="${k}"]`);const v=num(i.value.replace('−','-'));if(v==null)return;i.value=(v>0?'-':'+')+fmt(Math.abs(v));esqSet(k,i.value);});
   const fn=$('#frNota');if(fn)fn.oninput=()=>{const f=F(),p=P();if(!f||!p)return;f.nota=fn.value;Store.save(p);};
@@ -996,6 +1000,7 @@ function renderFrente(app){
   if(Dict)dictBanner();
   if(f.photo)setupCanvas();
   lzUI();
+  setTimeout(()=>{if(route.v!=='frente'||inlineOpen)return;if(!foldOff('cop'))A.addCop();else if(!foldOff('enc'))A.addEnc();},0);
 }
 
 function renderPrev(){
