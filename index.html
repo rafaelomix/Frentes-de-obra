@@ -496,7 +496,9 @@ let drawTool='mover';          // mover | pen | goma | nota
 let FOLD={};
 const FOLD_OPEN={pieza:1};   // persianas abiertas por defecto
 const foldOff=k=>(k in FOLD)?!!FOLD[k]:!FOLD_OPEN[k];   // true = recogida
-function foldHead(k,title){return `<button type="button" class="fold ${foldOff(k)?'closed':''}" data-fold="${k}"><span>${title}</span><span class="chev2">▾</span></button>`;}
+// color propio de cada persiana
+const FOLDCOL={cfg:'#475569',med:'#2563eb',enc:'#7c3aed',cop:'#0d9488',pieza:'#16a34a',ploc:'#dc2626',pexp:'#ea580c',pisoexp:'#ea580c',sync:'#0891b2',copia:'#64748b'};
+function foldHead(k,title){const c=FOLDCOL[k]||'#374151';return `<button type="button" class="fold ${foldOff(k)?'closed':''}" data-fold="${k}" style="color:${c};border-left:5px solid ${c};padding-left:10px;margin-left:-4px"><span>${title}</span><span class="chev2" style="color:${c}">▾</span></button>`;}
 function foldCls(k){return 'foldc'+(foldOff(k)?' closed':'');}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const k=b.dataset.fold;FOLD[k]=!foldOff(k);
   b.classList.toggle('closed',foldOff(k));const c=document.querySelector('[data-foldc="'+k+'"]');if(c)c.classList.toggle('closed',foldOff(k));
@@ -924,6 +926,9 @@ function renderFrente(app){
   $('#ttl').textContent=pi.title+' · '+name;
   const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}<span style="display:flex;align-items:center;gap:5px"><input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"><span style="display:flex;flex-direction:column;align-items:center;gap:2px"><span class="ordn" data-ord="${k}">${ordBadge(k)}</span><button type="button" class="cpb" data-cp="${k}" title="Calcar de ${esc(KLAB[PAIRK[k]])}">${/^(lt|lb|rt|rb)$/.test(k)?'⇅':'⇄'}</button></span></span></label>`;
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>${esc(name)}</b><button class="btn sm" data-act="renFrente">Renombrar</button></div></div>`+
+  `<div class="card">${foldHead('cfg','Configuración de descuentos'+(f.cfg?' · propios':''))}<div class="${foldCls('cfg')}" data-foldc="cfg" style="margin-top:8px">
+     <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt((f.cfg?f.cfg.cuts:p.cuts)[k]))}"></label>`).join('')}</div>
+     <div class="grid2" style="margin-top:8px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div></div></div>`+
   (f.photo?`<div class="phstrip">${allPh(f).map((x,i)=>`<button class="btn sm ${i===PHI?'pri':''}" data-act="phSel" data-i="${i}">Foto ${i+1}</button>`).join('')}<button class="btn sm" data-act="phAddCam">+ 📷 Foto</button><button class="btn sm" data-act="phAddGal">+ 🖼</button></div>
    <div class="dtools"><button class="btn sm ${drawTool==='mover'?'on':''}" data-act="dmover">✋ Mover</button>${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor&&drawTool==='pen'?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
      ${[[1.5,'Muy fino'],[3,'Fino'],[7,'Grueso']].map(([w,t])=>`<button class="btn sm ${drawTool==='pen'&&drawW===w?'on':''}" data-act="dw" data-w="${w}">${t}</button>`).join('')}
@@ -935,7 +940,7 @@ function renderFrente(app){
    <div class="cvwrap"><canvas id="cv"></canvas></div>
    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px"><button class="btn sm" data-act="photoCam">📷 Cambiar esta foto</button><button class="btn sm dang" data-act="phDel">🗑 Quitar foto</button><button class="btn sm" data-act="photoJpg">Guardar foto anotada</button></div>`
   :`<div class="card"><div class="note" style="margin-bottom:8px">Este frente no tiene foto.</div><div class="grid2"><button class="btn" data-act="photoCam">📷 Hacer foto</button><button class="btn" data-act="photoGal">🖼 Galería</button></div></div>`)+
-  `<div class="card"><div style="font-weight:600;margin-bottom:6px">Notas</div><textarea class="in" id="frNota" rows="3" placeholder="Notas de este frente…" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit">${esc(f.nota||'')}</textarea></div>`+
+  `<div class="card"><div style="font-weight:600;margin:0 0 6px -4px;color:#b45309;border-left:5px solid #b45309;padding-left:10px">Notas</div><textarea class="in" id="frNota" rows="3" placeholder="Notas de este frente…" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit">${esc(f.nota||'')}</textarea></div>`+
   `<div class="card">${foldHead('med','Medidas desde el láser (mm)')}<div class="${foldCls('med')}" data-foldc="med" style="margin-top:4px"><div class="qhrow">${qh('Cómo medir: láser en cruz sobre la encimera. Desde la línea vertical se mide a la pared izquierda y derecha, arriba y abajo. Desde la horizontal, a cada lado, hasta el techo (o mueble alto) y hasta el mueble de abajo. Todo en mm. Las casillas del mismo color son pareja: el botón ⇅ / ⇄ calca la medida de su pareja.')}</div>
    <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn sm pri" data-act="dictStart" style="flex:1 1 60%">🎤 Dictar medidas</button><button class="btn sm" data-act="kbStart" style="flex:1 1 30%">⌨ Dictar con teclado</button><button class="btn sm" data-act="orderEdit">⚙ Orden</button>
      <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="obra" ${dictUnit==='obra'?'selected':''}>m y cm</option><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label>
@@ -944,7 +949,8 @@ function renderFrente(app){
    <div class="note" id="lzSt" style="margin-bottom:10px">${Laser.conectado()?'Láser conectado. Toca una casilla (o una cifra de la foto) para elegir dónde cae la siguiente medida.':''}</div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div>
    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><div style="display:flex;align-items:center;font-weight:600;margin-bottom:6px">Encuentro de esquinas${qh('Encuentro con otro frente en la esquina. +14 alarga la pieza 14 mm por ese lado; −14 la acorta. Vacío = nada. Se suma a los descuentos normales.')}</div>
-    <div class="grid2">${[['l','⬅ Izquierda'],['r','Derecha ➡']].map(([k,t])=>`<label class="note">${t}<span style="display:flex;gap:6px;align-items:center"><input class="in" inputmode="text" data-esq="${k}" value="${esc((f.esq&&f.esq[k])||'')}" placeholder="p. ej. +14"><button type="button" class="btn sm" data-esqsg="${k}" style="flex:none;width:44px;font-size:18px;font-weight:700">±</button></span></label>`).join('')}</div></div>
+    <div class="grid2">${[['l','⬅ Izquierda'],['r','Derecha ➡']].map(([k,t])=>`<label class="note">${t}<select class="in" data-esq="${k}" style="display:block;width:100%;margin-top:4px;font-size:18px;padding:10px">${(()=>{const cur=num(String((f.esq&&f.esq[k])||'0').replace('−','-'))||0;const opts=[0,-14,14,-22,22];if(!opts.includes(cur))opts.push(cur);
+      return opts.map(v=>`<option value="${v>0?'+'+v:v}" ${v===cur?'selected':''}>${v===0?'0':(v>0?'+':'−')+Math.abs(v)}</option>`).join('');})()}</select></label>`).join('')}</div></div>
    <button class="btn pri full" data-act="saveFrente" style="margin-top:10px">💾 Guardar medidas</button></div></div>
    <div class="card">${foldHead('enc','Enchufes'+((f.enchufes||[]).length?' ('+f.enchufes.length+')':''))}<div class="${foldCls('enc')}" data-foldc="enc" style="margin-top:4px">
     <div class="qhrow">${qh('Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø'+fmt(cfgOf(p,f).dia)+', separación '+fmt(cfgOf(p,f).sep)+' mm.')}</div>
@@ -957,12 +963,6 @@ function renderFrente(app){
     <div id="copHost"></div>
     <button class="btn full" data-act="addCop">+ Añadir copete</button></div></div>
    
-   <div class="card"><div style="font-weight:600;margin-bottom:8px">Configuración de descuentos</div>
-    <div style="display:flex;align-items:center"><label class="chk" style="flex:1"><input type="checkbox" id="cfgSame" ${f.cfg?'':'checked'}> Valores por defecto</label>${qh('Marcado: descuentos arriba 2, abajo 12, izquierda 2 y derecha 2 mm; enchufes Ø68 con 70 mm entre ejes. Desmarca para poner valores distintos en este frente.')}</div>
-    ${f.cfg?`
-     <div class="cuts">${[['t','Arriba'],['b','Abajo'],['l','Izq'],['r','Dcha']].map(([k,l])=>`<label>${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt(f.cfg.cuts[k]))}"></label>`).join('')}</div>
-     <div class="grid2" style="margin-top:8px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div>`
-     :''}</div>
    <div class="card">${foldHead('pieza','Pieza resultante')}<div class="${foldCls('pieza')}" data-foldc="pieza" style="margin-top:6px"><div class="note" id="cutnote" style="margin-bottom:8px"></div><div id="prev" class="prev"></div></div></div>
    ${mailChk()}
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delFrente">Borrar frente</button>`;
@@ -978,7 +978,7 @@ function renderFrente(app){
   // encuentro de esquinas
   const esqSet=(k,v)=>{const f=F(),p=P();if(!f||!p)return;f.esq=f.esq||{};f.esq[k]=v;Store.save(p);renderPrev();
     const h=null;const e=esqOf(f);if(h)h.textContent='Encuentro de esquinas'+(e.l||e.r?' · '+[e.l?'izq '+fAj(e.l):'',e.r?'dcha '+fAj(e.r):''].filter(Boolean).join(', '):'');};
-  app.querySelectorAll('[data-esq]').forEach(i=>i.oninput=()=>esqSet(i.dataset.esq,i.value.trim()));
+  app.querySelectorAll('[data-esq]').forEach(i=>i.onchange=()=>esqSet(i.dataset.esq,i.value==='0'?'':i.value));
   app.querySelectorAll('[data-esqsg]').forEach(b=>b.onclick=e=>{e.preventDefault();const k=b.dataset.esqsg,i=app.querySelector(`[data-esq="${k}"]`);const v=num(i.value.replace('−','-'));if(v==null)return;i.value=(v>0?'-':'+')+fmt(Math.abs(v));esqSet(k,i.value);});
   const fn=$('#frNota');if(fn)fn.oninput=()=>{const f=F(),p=P();if(!f||!p)return;f.nota=fn.value;Store.save(p);};
   // Botón pequeño: calca la medida de su pareja
@@ -994,8 +994,9 @@ function renderFrente(app){
     else{const c0=cfgOf(p,null);f.cfg={cuts:{...c0.cuts},dia:c0.dia,sep:c0.sep};}
     Store.save(p);render();
   };
-  app.querySelectorAll('[data-fcut]').forEach(i=>i.oninput=()=>{const f=F(),p=P();if(!f||!p)return;const v=num(i.value);if(v!=null&&f.cfg){f.cfg.cuts[i.dataset.fcut]=v;Store.save(p);renderPrev();}});
-  app.querySelectorAll('[data-fset]').forEach(i=>i.oninput=()=>{const f=F(),p=P();if(!f||!p)return;const v=num(i.value);if(v!=null&&v>0&&f.cfg){f.cfg[i.dataset.fset]=v;Store.save(p);renderPrev();}});
+  const ownCfg=f=>{if(!f.cfg){const c0=cfgOf(P(),null);f.cfg={cuts:{...c0.cuts},dia:c0.dia,sep:c0.sep};}return f.cfg;};
+  app.querySelectorAll('[data-fcut]').forEach(i=>i.oninput=()=>{const f=F(),p=P();if(!f||!p)return;const v=num(i.value);if(v!=null){ownCfg(f).cuts[i.dataset.fcut]=v;Store.save(p);renderPrev();}});
+  app.querySelectorAll('[data-fset]').forEach(i=>i.oninput=()=>{const f=F(),p=P();if(!f||!p)return;const v=num(i.value);if(v!=null&&v>0){ownCfg(f)[i.dataset.fset]=v;Store.save(p);renderPrev();}});
   renderPrev();
   if(Dict)dictBanner();
   if(f.photo)setupCanvas();
@@ -1545,10 +1546,10 @@ async function copForm(i){
   const c=i==null?{lado:(f.copetes.some(x=>x.lado==='izq')?'dcha':'izq'),aj:'-14',alt:'45',largo:''}:f.copetes[i];
   const aj0=copAj(c),ajTxt=(aj0<0?'-':'+')+fmt(Math.abs(aj0));
   const pr=modal({title:i==null?'Añadir copete':'Copete C'+(i+1),fields:[
-    {label:'Lado del copete',sel:[['izq','Izquierda'],['dcha','Derecha'],['ambos','Ambos'],['no','Ninguno']],value:c.lado},
+    {label:'Lado',sel:[['izq','Izquierda'],['dcha','Derecha'],['ambos','Ambos'],['no','Ninguno']],value:c.lado},
     {label:'Ajuste (mm)',value:ajTxt,ph:'-14'},
     {label:'Altura (mm)',value:c.alt,num:true,ph:'45'},
-    {label:'Medida de la pared en obra (mm) — el copete medirá esto + el ajuste',value:c.largo,num:true,ph:'p. ej. 620'},
+    {label:'Pared (mm)',value:c.largo,num:true,ph:'p. ej. 620'},
     {label:'Piezas',sel:[['0','Una pieza'],['1','Partido en dos']],value:c.partir?'1':'0'}],
     buttons:i==null?[{label:'Cancelar',v:null},{label:'Añadir',v:'ok',pri:true}]:[{label:'Borrar',v:'del',dang:true},{label:'Cancelar',v:null},{label:'Guardar',v:'ok',pri:true}]});
   {const fl=[...$('#mbox').querySelectorAll('.fld')];
@@ -1569,7 +1570,7 @@ async function copForm(i){
       row.insertAdjacentHTML('beforeend','<button type="button" class="btn sm" id="ajSg" style="flex:none;width:44px;font-size:18px;font-weight:700">±</button>');
       $('#ajSg').onclick=()=>{const v=num(ai.value);const n=v==null?14:-v;ai.value=(n<0?'-':'+')+fmt(Math.abs(n));};
 
-      const lb=fl[1].querySelector('label');if(lb)lb.insertAdjacentHTML('beforeend',qh('Ajuste: −14 = 12 de grosor del frente + 2 de holgura. Con + se añade en vez de descontar. Vacío = 0.'));}}
+}}
   encDictUI('copete',CSTEPS);
   const r=await pr;encDictStop();
   if(!r.v)return;
@@ -1588,12 +1589,12 @@ async function encForm(i){
   const p=P(),f=F();f.enchufes=f.enchufes||[];
   const e=i==null?{lado:'dcha',h:'',vpos:'arriba',v:'',n:1,ori:'h'}:f.enchufes[i];
   const pr=modal({title:i==null?'Añadir enchufe':'Enchufe E'+(i+1),fields:[
-    {label:'Lado respecto a la línea vertical del láser',sel:[['izq','A la izquierda'],['dcha','A la derecha']],value:e.lado},
-    {label:'Distancia horizontal desde la línea vertical hasta el eje (mm)',value:e.h,num:true,ph:'mm'},
-    {label:'Respecto a la línea horizontal del láser',sel:[['arriba','Por encima'],['abajo','Por debajo']],value:e.vpos},
-    {label:'Distancia vertical desde la línea horizontal hasta el eje (mm)',value:e.v,num:true,ph:'mm'},
+    {label:'Lado',sel:[['izq','A la izquierda'],['dcha','A la derecha']],value:e.lado},
+    {label:'Horizontal (mm)',value:e.h,num:true,ph:'mm'},
+    {label:'Altura',sel:[['arriba','Por encima'],['abajo','Por debajo']],value:e.vpos},
+    {label:'Vertical (mm)',value:e.v,num:true,ph:'mm'},
     {label:'Tipo',sel:[['1','Sencillo'],['2','Doble'],['3','Triple'],['4','Cuádruple']],value:String(e.n||1)},
-    {label:'Disposición (doble, triple o cuádruple)',sel:[['h','Horizontal'],['v','Vertical']],value:e.ori||'h'}],
+    {label:'Disposición',sel:[['h','Horizontal'],['v','Vertical']],value:e.ori||'h'}],
     buttons:i==null?[{label:'Cancelar',v:null},{label:'Añadir',v:'ok',pri:true}]:[{label:'Borrar',v:'del',dang:true},{label:'Cancelar',v:null},{label:'Guardar',v:'ok',pri:true}]});
   {const fl=[...$('#mbox').querySelectorAll('.fld')],sT=fl[4]&&fl[4].querySelector('select'),sD=fl[5]&&fl[5].querySelector('select');
     const sL=fl[0]&&fl[0].querySelector('select'),sV=fl[2]&&fl[2].querySelector('select');
