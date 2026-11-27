@@ -930,13 +930,14 @@ function renderPromo(app){
   const p=P();$('#ttl').textContent=p.title;
   const loc=p.loc||{};
   app.innerHTML=`<div class="card"><div class="ttl"><b>${esc(p.title)}</b><button class="btn sm" data-act="renPromo">Renombrar</button></div>
-  <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">${foldHead('ploc','📍 Ubicación de la obra'+(loc.txt?' · '+esc(loc.txt):''))}<div class="${foldCls('ploc')}" data-foldc="ploc" style="margin-top:8px">
+  <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">${foldHead('ploc','Detalles'+(loc.txt?' · 📍 '+esc(loc.txt):'')+((p.planos||[]).length?' · 📐 '+p.planos.length:''))}<div class="${foldCls('ploc')}" data-foldc="ploc" style="margin-top:8px">
+   <div style="font-weight:600;margin:2px 2px 6px">📍 Ubicación de la obra</div>
    <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
-   <div style="display:flex;gap:6px"><button class="btn sm" data-act="locSave" style="flex:1">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav" style="flex:1">🧭 Navegar a la obra</button><button class="btn sm" data-act="locWa" title="Enviar por WhatsApp" aria-label="Enviar por WhatsApp" style="flex:0 0 auto;padding:6px 10px;background:#25d366;color:#fff;border-color:#25d366">💬</button>${navigator.share?'<button class="btn sm" data-act="locShare" title="Compartir" aria-label="Compartir" style="flex:0 0 auto;padding:6px 10px">📤</button>':''}</div></div></div></div>
-  <div class="card">${foldHead('plano','Planos'+((p.planos||[]).length?' ('+p.planos.length+')':''))}<div class="${foldCls('plano')}" data-foldc="plano" style="margin-top:8px">
+   <div style="display:flex;gap:6px"><button class="btn sm" data-act="locSave" style="flex:1">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav" style="flex:1">🧭 Navegar a la obra</button><button class="btn sm" data-act="locWa" title="Enviar por WhatsApp" aria-label="Enviar por WhatsApp" style="flex:0 0 auto;padding:6px 10px;background:#25d366;color:#fff;border-color:#25d366">💬</button>${navigator.share?'<button class="btn sm" data-act="locShare" title="Compartir" aria-label="Compartir" style="flex:0 0 auto;padding:6px 10px">📤</button>':''}</div>
+   <div style="font-weight:600;margin:14px 2px 6px;padding-top:10px;border-top:1px solid var(--line)">📐 Planos</div>
    ${(p.planos||[]).map((pl,i)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><button class="item" data-act="planOpen" data-i="${i}" style="padding:10px;flex:1;margin:0"><div class="grow"><div class="t" style="font-size:15px">${/^(jpe?g|png|webp)$/.test(pl.ext)?'🖼':pl.ext==='pdf'?'📄':'📐'} ${esc(pl.name)}</div><div class="s">${esc((pl.ext||'').toUpperCase())}${pl.size?' · '+(pl.size/1048576).toFixed(1).replace('.',',')+' MB':''}</div></div><span class="chev">›</span></button><button class="btn sm dang" data-act="planDel" data-i="${i}" aria-label="Borrar plano">🗑</button></div>`).join('')}
-   <div style="display:flex;gap:6px"><button class="btn" data-act="planUp" style="flex:1">⬆ Subir planos (DWG, DXF, PDF o imagen)</button><button class="btn" data-act="planCam" title="Hacer una foto (p. ej. de un plano en papel)">📷</button></div></div></div>
+   <div style="display:flex;gap:6px"><button class="btn" data-act="planUp" style="flex:1">⬆ Subir planos (DWG, DXF, PDF o imagen)</button><button class="btn" data-act="planCam" title="Hacer una foto (p. ej. de un plano en papel)">📷</button></div></div></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     const fph=(allPhotos(pi)[0]||{}).photo;
@@ -2553,7 +2554,7 @@ $('#fPlan').onchange=async e=>{const fs=[...e.target.files];const p=P();if(!fs.l
     try{let blob=f,e2=ext,n2=name;
       if(isImg){blob=await compressPlan(f);e2='jpg';if(/^(image|img_|dsc|photo|pxl_)/i.test(name)||!name)n2='Foto '+new Date().toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}
       const ref=await Store.saveFile(blob);const pid=uid();p.planos.push({id:pid,name:n2,ext:e2,size:blob.size,file:ref});ok.push([blob,e2,n2,pid]);}catch(err){console.error(err);toast('No se pudo guardar «'+full+'»');}}
-  if(!ok.length)return;Store.save(p);FOLD.plano=false;render();
+  if(!ok.length)return;Store.save(p);FOLD.ploc=false;render();
   if(ok.length===1)PLAN.open(...ok[0]);else toast(ok.length+' planos guardados. Toca uno para verlo.');};
 function newFrente(ref){
   const p=P(),pi=PI();
