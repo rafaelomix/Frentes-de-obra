@@ -1284,7 +1284,14 @@ const MUV={l:[-1,0],r:[1,0],t:[0,1],b:[0,-1]};
 const MARR={lt:[[0,.55],[-1,.55],[-.45,.55]],lb:[[0,-.55],[-1,-.55],[-.45,-.55]],rt:[[0,.55],[1,.55],[.45,.55]],rb:[[0,-.55],[1,-.55],[.45,-.55]],
   ul:[[-.8,0],[-.8,1],[-.8,.8]],dl:[[-.8,0],[-.8,-1],[-.8,-.8]],ur:[[.8,0],[.8,1],[.8,.8]],dr:[[.8,0],[.8,-1],[.8,-.8]]};
 function medNext(ph){const p=(ph&&ph.med&&ph.med.pts)||{};const s=MSTEPS.find(([k])=>!p[k]);return s?s[0]:null;}
-function medH(ph){const p=ph&&ph.med&&ph.med.pts;if(!p||medNext(ph))return null;const ks=['l','r','t','b'];return homog(ks.map(k=>MUV[k]),ks.map(k=>p[k]));}
+// Colocación: el cruce C es donde se cortan las dos líneas del láser. Cada cuadrante usa sus dos semirrayos
+// (C→pared izq/dcha y C→techo/mueble), así las cotas siguen la inclinación real de las líneas de la foto.
+function medH(ph){const p=ph&&ph.med&&ph.med.pts;if(!p||medNext(ph))return null;
+  const x=(a,b)=>a[0]*b[1]-a[1]*b[0],d1=[p.r[0]-p.l[0],p.r[1]-p.l[1]],d2=[p.b[0]-p.t[0],p.b[1]-p.t[1]],den=x(d1,d2);
+  let C;if(Math.abs(den)<1e-9)C=[(p.l[0]+p.r[0])/2,(p.t[1]+p.b[1])/2];
+  else{const t=x([p.t[0]-p.l[0],p.t[1]-p.l[1]],d2)/den;C=[p.l[0]+t*d1[0],p.l[1]+t*d1[1]];}
+  const V=q=>[q[0]-C[0],q[1]-C[1]],L=V(p.l),R=V(p.r),T=V(p.t),B=V(p.b);
+  return(u,v)=>{const U=u<0?L:R,W=v>0?T:B,a=Math.abs(u),b=Math.abs(v);return[C[0]+a*U[0]+b*W[0],C[1]+a*U[1]+b*W[1]];};}
 function homog(src,dst){const A=[],B=[];
   for(let i=0;i<4;i++){const[x,y]=src[i],[X,Y]=dst[i];A.push([x,y,1,0,0,0,-X*x,-X*y]);B.push(X);A.push([0,0,0,x,y,1,-Y*x,-Y*y]);B.push(Y);}
   const h=linSolve(A,B);if(!h)return null;h.push(1);return h;}
@@ -1292,7 +1299,6 @@ function linSolve(A,b){const n=b.length,M=A.map((r,i)=>[...r,b[i]]);
   for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;if(Math.abs(M[p][c])<1e-12)return null;[M[c],M[p]]=[M[p],M[c]];
     for(let r=0;r<n;r++){if(r===c)continue;const f=M[r][c]/M[c][c];for(let k=c;k<=n;k++)M[r][k]-=f*M[c][k];}}
   return M.map((r,i)=>r[n]/r[i]);}
-function hApply(h,u,v){const w=h[6]*u+h[7]*v+1;return[(h[0]*u+h[1]*v+h[2])/w,(h[3]*u+h[4]*v+h[5])/w];}
 function mkFrente(pi){const f={id:uid(),name:'Frente '+(pi.frentes.length+1),cx:.5,cy:.55,m:{},enchufes:[]};pi.frentes.push(f);Store.save(P());return f;}
 function medF(){const ph=PH(),pi=PI();if(!ph||!ph.med||!pi)return null;return pi.frentes.find(f=>f.id===ph.med.f)||null;}
 function medBar(){const pi=PI(),ph=PH(),m=(ph&&ph.med)||{};
@@ -1303,7 +1309,7 @@ function medMsg(){const el=$('#medMsg');if(!el)return;const ph=PH(),k=medNext(ph
 function drawMed(ctx,W,H,ph,u){
   const p=ph.med.pts||{},h=medH(ph),P2=q=>[q[0]*W,q[1]*H];ctx.save();ctx.lineCap='round';
   if(h){const line=(a,b,c,w,dash)=>{ctx.strokeStyle=c;ctx.lineWidth=w;ctx.setLineDash(dash||[]);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();};
-    const I=(uu,vv)=>P2(hApply(h,uu,vv));
+    const I=(uu,vv)=>P2(h(uu,vv));
     line(P2(p.l),P2(p.r),'rgba(239,68,68,.9)',2*u,[8*u,5*u]);line(P2(p.t),P2(p.b),'rgba(239,68,68,.9)',2*u,[8*u,5*u]);ctx.setLineDash([]);
     for(const k in MARR){const[a,b]=MARR[k],A=I(...a),B=I(...b);line(A,B,PAIRC[k],2.2*u);
       const ang=Math.atan2(B[1]-A[1],B[0]-A[0]),L=9*u;ctx.fillStyle=PAIRC[k];ctx.beginPath();ctx.moveTo(B[0],B[1]);
@@ -1323,7 +1329,7 @@ function placeMedInputs(){
       ip.oninput=()=>{const f=medF(),p=P();if(!f||!p)return;f.m=f.m||{};const v=ip.value.trim().replace(/\s+/g,'');f.m[k]=v===''?null:v;Store.save(p);};
       lay.appendChild(ip);}
     if(document.activeElement!==ip){const v=f.m&&f.m[k];ip.value=v==null?'':v;}
-    const q=hApply(h,MARR[k][2][0],MARR[k][2][1]),x=q[0]*w*VIEW.z+VIEW.tx,y=q[1]*hh*VIEW.z+VIEW.ty;
+    const q=h(MARR[k][2][0],MARR[k][2][1]),x=q[0]*w*VIEW.z+VIEW.tx,y=q[1]*hh*VIEW.z+VIEW.ty;
     ip.style.left=(x-35)+'px';ip.style.top=(y-17)+'px';ip.style.display=(x<-30||y<-20||x>w+30||y>hh+20)?'none':'';}
 }
 function q1(v){return Math.round(v*100)/100;}   // coordenadas con 2 decimales (0-1000): trazos finos aunque se amplíe mucho
