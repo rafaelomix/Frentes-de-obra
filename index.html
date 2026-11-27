@@ -56,7 +56,7 @@ input.in.miss{background:#fff7ed;border-color:#fdba74}
 #mbox.inlinebox{background:#f9fafb;border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
 #mbox.inlinebox h3{font-size:16px;margin:0 0 8px}
 #encHost:not(:empty)+button,#copHost:not(:empty)+button{display:none}
-.phgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-bottom:10px}.phcell{position:relative;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#e5e7eb;aspect-ratio:4/3;cursor:pointer}.phcell img{width:100%;height:100%;object-fit:cover;display:block}.phcell span{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;padding:1px 6px;border-radius:8px}
+.phgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-bottom:10px;grid-auto-flow:dense}.phcell.wide{grid-column:span 3;aspect-ratio:auto}.phcell.wide img{height:auto}.phcell{position:relative;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#e5e7eb;aspect-ratio:4/3;cursor:pointer}.phcell img{width:100%;height:100%;object-fit:cover;display:block}.phcell span{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;padding:1px 6px;border-radius:8px}
 #mbox.inlinebox .btns{display:flex;gap:8px;margin-top:10px}#mbox.inlinebox .btns .btn{flex:1;padding:12px}
 .qh{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1.5px solid #9ca3af;background:#fff;color:#4b5563;font:700 13px/1 system-ui,sans-serif;padding:0;margin-left:6px;vertical-align:middle;flex:none;cursor:pointer}
 .qhrow{display:flex;justify-content:flex-end;margin:-2px 0 6px}
@@ -963,7 +963,7 @@ function renderPiso(app){
   const fotos=pi.fotos||[],cps=pi.copetes||[];
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
   <div class="card">${foldHead('pfot','Fotos'+(fotos.length?' ('+fotos.length+')':''))}<div class="${foldCls('pfot')}" data-foldc="pfot" style="margin-top:8px">
-   ${fotos.length?`<div class="phgrid">${fotos.map((x,i)=>`<button class="phcell" data-act="openFoto" data-i="${i}"><img data-ph="${esc(JSON.stringify(x.photo))}" alt=""><span>${i+1}${(x.draw&&x.draw.length)||(x.notes&&x.notes.length)?' ✏':''}${(()=>{const fr=pi.frentes.find(f=>f.id===x.fr);return fr?' · '+esc(fr.name||'Frente'):'';})()}</span></button>`).join('')}</div>`:''}
+   ${fotos.length?`<div class="phgrid">${fotos.map((x,i)=>`<button class="phcell ${frOf(x)&&x.med&&!medNext(x)?'wide':''}" data-act="openFoto" data-i="${i}"><img data-ph="${esc(JSON.stringify(x.photo))}" ${frOf(x)&&x.med&&!medNext(x)?`data-medi="${i}"`:''} alt=""><span>${i+1}${(x.draw&&x.draw.length)||(x.notes&&x.notes.length)?' ✏':''}${(()=>{const fr=pi.frentes.find(f=>f.id===x.fr);return fr?' · '+esc(fr.name||'Frente'):'';})()}</span></button>`).join('')}</div>`:''}
    <div class="grid2"><button class="btn" data-act="pfCam">📷 Hacer foto</button><button class="btn" data-act="pfGal">🖼 Galería</button></div>
    <button class="btn pri full" data-act="pfNewFr" style="margin-top:8px">📷 Foto de un frente nuevo</button></div></div>
   <div class="card">${foldHead('pnot','Notas'+((pi.nota||'').trim()?' ✏':''))}<div class="${foldCls('pnot')}" data-foldc="pnot" style="margin-top:8px"><textarea class="in" id="piNota" rows="3" placeholder="Notas de este piso…" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit">${esc(pi.nota||'')}</textarea></div></div>
@@ -979,7 +979,8 @@ function renderPiso(app){
     ${cps.map((c,i)=>{return `<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1}</div><div class="s">${esc(copDesc(c))}</div></div><span class="chev">›</span></button>`;}).join('')}</div></div>
    <div class="card">${foldHead('pisoexp','Exportar DXF del piso')}<div class="${foldCls('pisoexp')}" data-foldc="pisoexp" style="margin-top:8px"><div class="grid2"><button class="btn pri" data-act="dxfPiso">⬇ Descargar</button>${mailBtn('dxfPiso')}</div></div></div>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPiso">Borrar piso</button>`;
-  app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.thumbURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
+  app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.thumbURL(JSON.parse(im.dataset.ph));if(u)im.src=u;
+    if(im.dataset.medi!=null){const x=pi.fotos[+im.dataset.medi],d=await medThumb(x);if(d)im.src=d;}});
   const pn=$('#piNota');if(pn)pn.oninput=()=>{const p=P(),pi=PI();if(!p||!pi)return;pi.nota=pn.value;Store.save(p);};
   setTimeout(()=>{if(route.v!=='piso'||inlineOpen)return;if(!foldOff('cop'))A.addCop();},0);
 }
@@ -1179,6 +1180,7 @@ function drawAnnot(ctx,img,W,H,f,collect,view){
   const u=annUnit(W,H,view),lw=LINE_CSS*u;
   for(const st of (f.draw||[]))strokePath(ctx,st,W,H,lw);
   if(view&&f.med&&medOn())drawMed(ctx,W,H,f,u);
+  else if(view&&f.med&&route.v==='foto'&&frOf(f)&&!medNext(f))drawMed(ctx,W,H,f,u,true);   // foto con frente: se ven sus medidas
   const out=[];
   ctx.save();
   (f.notes||[]).forEach((n,i)=>{
@@ -1369,16 +1371,17 @@ function frSel(ph){const pi=PI();return `<label class="note" style="display:flex
 function medMsg(){const el=$('#medMsg');if(!el)return;const k=medNext(PH());el.style.color=k?'#c2410c':'';
   el.textContent=k?(MSTEPS.findIndex(x=>x[0]===k)+1)+'/4 · '+MSTEPS.find(x=>x[0]===k)[1]+'.':(encAddMode?'Toca en la foto donde está el enchufe.':'Escribe cada medida en cm en su casilla (p. ej. 223,5); en Medidas se guarda en mm. Toca un enchufe para ver sus cotas.')+' Si hace falta, arrastra las esquinas o el punto rojo (cruce).';}
 // Dibujo del rectángulo, la cruz y las flechas (solo en pantalla, no sale en la foto exportada)
-function drawMed(ctx,W,H,ph,u){
-  if(medNext(ph)){const p=(ph.med&&ph.med.pts)||{};ctx.save();
+function drawMed(ctx,W,H,ph,u,stat){
+  if(medNext(ph)){if(stat)return;const p=(ph.med&&ph.med.pts)||{};ctx.save();
     if(p.l&&p.r){ctx.strokeStyle='rgba(239,68,68,.9)';ctx.lineWidth=2*u;ctx.setLineDash([8*u,5*u]);ctx.beginPath();ctx.moveTo(p.l[0]*W,p.l[1]*H);ctx.lineTo(p.r[0]*W,p.r[1]*H);ctx.stroke();ctx.setLineDash([]);}
     for(const k in p){const q=[p[k][0]*W,p[k][1]*H];ctx.lineWidth=2*u;ctx.strokeStyle='#fff';ctx.fillStyle='rgba(239,68,68,.85)';ctx.beginPath();ctx.arc(q[0],q[1],7*u,0,7);ctx.fill();ctx.stroke();}
     ctx.restore();return;}
   const h=medH(ph);if(!h)return;const m=ph.med,P2=q=>[q[0]*W,q[1]*H],I=(a,b)=>P2(h(a,b));ctx.save();ctx.lineCap='round';
   const line=(a,b,c,w,dash)=>{ctx.strokeStyle=c;ctx.lineWidth=w;ctx.setLineDash(dash||[]);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();};
   // rectángulo del frente
-  // contorno muy suave: solo una guía
-  ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1*u;ctx.setLineDash([3*u,4*u]);ctx.beginPath();m.q.forEach((q,i)=>{const p=P2(q);i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);});ctx.closePath();ctx.stroke();ctx.setLineDash([]);
+  // contorno muy suave: solo una guía (no en la vista fija)
+  if(!stat){
+  ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1*u;ctx.setLineDash([3*u,4*u]);ctx.beginPath();m.q.forEach((q,i)=>{const p=P2(q);i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);});ctx.closePath();ctx.stroke();ctx.setLineDash([]);}
   // láser
   const[cu,cw]=m.c;line(I(0,cw),I(1,cw),'rgba(239,68,68,.9)',2*u,[8*u,5*u]);line(I(cu,0),I(cu,1),'rgba(239,68,68,.9)',2*u,[8*u,5*u]);ctx.setLineDash([]);
   const lay=medLayout(m.c);
@@ -1392,6 +1395,11 @@ function drawMed(ctx,W,H,ph,u){
     for(let j=0;j<n;j++){const o=(j-(n-1)/2)*sp,x=P0[0]+(e.ori==='v'?0:o),y=P0[1]+(e.ori==='v'?o:0);
       ctx.fillStyle=sel?'rgba(37,99,235,.95)':'rgba(37,99,235,.75)';ctx.strokeStyle='#fff';ctx.lineWidth=(sel?2.5:1.5)*u;ctx.beginPath();ctx.arc(x,y,6.5*u,0,7);ctx.fill();ctx.stroke();}
     ctx.fillStyle='#fff';ctx.font=`700 ${9*u}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('E'+(i+1),P0[0],P0[1]-(n>1&&e.ori==='v'?(n/2+.6)*sp:12*u));});
+  // vista fija: en vez de tiradores, las medidas escritas (en cm) en su sitio
+  if(stat){const f=frOf(ph),lay2=medLayout(m.c);ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`700 ${13*u}px system-ui`;
+    for(const k of KEYS){const v=num(f&&f.m&&f.m[k]);if(v==null)continue;const q=I(...lay2[k][2]),t=fmt(v/10),w=ctx.measureText(t).width+10*u,hh=19*u;
+      ctx.fillStyle='rgba(255,255,255,.93)';ctx.strokeStyle=PAIRC[k];ctx.lineWidth=2.2*u;rr(ctx,q[0]-w/2,q[1]-hh/2,w,hh,4*u);ctx.fill();ctx.stroke();ctx.fillStyle='#111827';ctx.fillText(t,q[0],q[1]+.5*u);}
+    ctx.restore();return;}
   // tiradores: esquinas (blancas) y cruce (rojo)
   const hs=medHandles(ph);
   for(const k in hs){const q=P2(hs[k]);
@@ -1402,6 +1410,9 @@ function drawMed(ctx,W,H,ph,u){
     ctx.fillStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.arc(q[0],q[1],3*u,0,7);ctx.fill();}
   ctx.restore();
 }
+// Miniatura de una foto con su frente: foto + cruz + medidas
+async function medThumb(x){try{const img=await getImg(x.photo);if(!img)return null;const W=720,H=Math.round(W*img.naturalHeight/img.naturalWidth),c=document.createElement('canvas');c.width=W;c.height=H;
+  const g=c.getContext('2d');g.drawImage(img,0,0,W,H);drawMed(g,W,H,x,W/420,true);return c.toDataURL('image/jpeg',.82);}catch(e){return null;}}
 // Casillas sobre la foto, colocadas con la perspectiva
 // ===== Enchufes en la foto =====
 // e.pos={ph:id de la foto,u,w}: sitio del enchufe dentro del rectángulo. Si no lo tiene, se estima con las medidas del frente.
