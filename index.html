@@ -1080,7 +1080,7 @@ function renderPrev(){
   const vb=bbox([[bb.minX,bb.maxY],[xL-sf*1.5,yB-sf*1.5],[xR+sf*1.5,yT+sf*1.5],...cops.flatMap(q=>q.pts.map(t=>[t[0]+(q.partir?COP_GAP:0),t[1]-fs*1.4]))]);
   // cotas de los enchufes tal como se dieron: desde las líneas del láser hasta el eje
   const encDims=encs.map(x=>{const ec=x.g.c;
-    return dimS([0,ec[1]],[ec[0],ec[1]],Math.abs(ec[0]),'#1d4ed8')+dimS([ec[0],0],[ec[0],ec[1]],Math.abs(ec[1]),'#1d4ed8');}).join('');
+    return dimS([0,ec[1]],[ec[0],ec[1]],Math.abs(ec[0]),OC)+dimS([ec[0],0],[ec[0],ec[1]],Math.abs(ec[1]),OC);}).join('');
   el.innerHTML=`<svg viewBox="${vb.minX-pad*0.4} ${-vb.maxY-pad*0.4} ${vb.w+pad*0.8} ${vb.h+pad*0.8}">
    <polygon points="${pt(g.meas)}" fill="none" stroke="#9ca3af" stroke-width="1" vector-effect="non-scaling-stroke"/>
    <polygon points="${pt(g.fin)}" fill="#fed7aa" fill-opacity=".55" stroke="#111827" stroke-width="2" vector-effect="non-scaling-stroke"/>${[['l',0,3],['r',1,2]].filter(([k])=>vistoOf(f)[k]).map(([k,a,b])=>`<polyline points="${pt([fin[a],fin[b]])}" stroke="#ea580c" stroke-width="5" vector-effect="non-scaling-stroke"/>`).join('')}
