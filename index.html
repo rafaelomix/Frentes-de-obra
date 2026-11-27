@@ -69,6 +69,9 @@ input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:tex
 #plv{position:fixed;inset:0;z-index:60;background:#111827;display:none;flex-direction:column}#plv.open{display:flex}
 .plh{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;padding-top:max(8px,env(safe-area-inset-top));color:#fff}.plh b{flex:1 1 140px;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #plView{flex:1;position:relative;overflow:hidden;margin:0 8px;border-radius:8px;background:#000;touch-action:none}#plCv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.pltabs{display:flex;gap:4px;overflow-x:auto;padding:8px 8px 0;padding-top:max(8px,env(safe-area-inset-top))}.pltabs:empty{display:none}
+.pltab{display:flex;align-items:center;gap:8px;white-space:nowrap;padding:7px 8px 7px 12px;border-radius:9px 9px 0 0;background:#1f2937;color:#9ca3af;font-size:14px;cursor:pointer;flex:none}.pltab.on{background:#374151;color:#fff;font-weight:600}.pltab b{padding:0 4px;color:#9ca3af;font-weight:400}
+#plFab{position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:55;border:0;border-radius:28px;padding:12px 16px;font-size:20px;font-weight:700;background:#0f766e;color:#fff;box-shadow:0 6px 18px rgba(0,0,0,.35)}
 .plp{color:#9ca3af;font-size:12px;padding:6px 12px calc(8px + env(safe-area-inset-bottom))}
 #medLay{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 #medLay input{position:absolute;pointer-events:auto;width:70px;box-sizing:border-box;padding:4px 2px;font-size:17px;font-weight:700;text-align:center;border-radius:7px;background:rgba(255,255,255,.93);color:#111827;-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
@@ -121,7 +124,7 @@ input.in.dicting,select.in.dicting{outline:3px solid #f59e0b;outline-offset:2px}
 <div id="modal" hidden><div class="box" id="mbox"></div></div>
 <div id="toast"></div>
 <div id="dictbar" hidden></div>
-<input type="file" id="fCam" class="hidefile" accept="image/*" capture="environment"><input type="file" id="fPlan" class="hidefile" accept=".dwg,.dxf,.pdf,image/*" multiple>
+<input type="file" id="fCam" class="hidefile" accept="image/*" capture="environment"><input type="file" id="fPlan" class="hidefile" accept=".dwg,.dxf,.pdf,image/*" multiple><input type="file" id="fPlanCam" class="hidefile" accept="image/*" capture="environment">
 <input type="file" id="fGal" class="hidefile" accept="image/*">
 <input type="file" id="fImp" class="hidefile" accept=".json,application/json">
 <script>
@@ -932,8 +935,8 @@ function renderPromo(app){
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
    <div style="display:flex;gap:6px"><button class="btn sm" data-act="locSave" style="flex:1">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav" style="flex:1">🧭 Navegar a la obra</button><button class="btn sm" data-act="locWa" title="Enviar por WhatsApp" aria-label="Enviar por WhatsApp" style="flex:0 0 auto;padding:6px 10px;background:#25d366;color:#fff;border-color:#25d366">💬</button>${navigator.share?'<button class="btn sm" data-act="locShare" title="Compartir" aria-label="Compartir" style="flex:0 0 auto;padding:6px 10px">📤</button>':''}</div></div></div></div>
   <div class="card">${foldHead('plano','Planos'+((p.planos||[]).length?' ('+p.planos.length+')':''))}<div class="${foldCls('plano')}" data-foldc="plano" style="margin-top:8px">
-   ${(p.planos||[]).map((pl,i)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><button class="item" data-act="planOpen" data-i="${i}" style="padding:10px;flex:1;margin:0"><div class="grow"><div class="t" style="font-size:15px">📐 ${esc(pl.name)}</div><div class="s">${esc((pl.ext||'').toUpperCase())}${pl.size?' · '+(pl.size/1048576).toFixed(1).replace('.',',')+' MB':''}</div></div><span class="chev">›</span></button><button class="btn sm dang" data-act="planDel" data-i="${i}" aria-label="Borrar plano">🗑</button></div>`).join('')}
-   <button class="btn full" data-act="planUp">⬆ Subir planos (DWG, DXF o PDF)</button></div></div>
+   ${(p.planos||[]).map((pl,i)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><button class="item" data-act="planOpen" data-i="${i}" style="padding:10px;flex:1;margin:0"><div class="grow"><div class="t" style="font-size:15px">${/^(jpe?g|png|webp)$/.test(pl.ext)?'🖼':pl.ext==='pdf'?'📄':'📐'} ${esc(pl.name)}</div><div class="s">${esc((pl.ext||'').toUpperCase())}${pl.size?' · '+(pl.size/1048576).toFixed(1).replace('.',',')+' MB':''}</div></div><span class="chev">›</span></button><button class="btn sm dang" data-act="planDel" data-i="${i}" aria-label="Borrar plano">🗑</button></div>`).join('')}
+   <div style="display:flex;gap:6px"><button class="btn" data-act="planUp" style="flex:1">⬆ Subir planos (DWG, DXF, PDF o imagen)</button><button class="btn" data-act="planCam" title="Hacer una foto (p. ej. de un plano en papel)">📷</button></div></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     const fph=(allPhotos(pi)[0]||{}).photo;
@@ -2033,15 +2036,18 @@ function build(G,flipY){const paths=new Map(),texts=[];let a=1e300,b=1e300,c=-1e
     let P=paths.get(col);if(!P){P=new Path2D();paths.set(col,P);}const p=g.p.filter(q=>isFinite(q[0])&&isFinite(q[1]));if(p.length<2)continue;
     P.moveTo(p[0][0],Y(p[0][1]));ex(p[0][0],Y(p[0][1]));for(let i=1;i<p.length;i++){P.lineTo(p[i][0],Y(p[i][1]));ex(p[i][0],Y(p[i][1]));}}
   return{paths,texts,bb:[a,b,c,d]};}
-let V=null;   // {kind:'vec'|'img', paths,texts,bb | img, z,tx,ty, name}
+let V=null;   // pestaña activa: {kind:'vec'|'img', paths,texts,bb | img, z,tx,ty, name, key, pdf}
+const T=[];    // pestañas abiertas (se mantienen al minimizar)
 const el=id=>document.getElementById(id);
 function ui(){if(el('plv'))return;const d=document.createElement('div');d.id='plv';
-  d.innerHTML=`<div class="plh"><b id="plName"></b><select class="in" id="plPage" style="display:none;width:auto;padding:6px"></select>
+  d.innerHTML=`<div class="pltabs" id="plTabs"></div><div class="plh"><b id="plName"></b><select class="in" id="plPage" style="display:none;width:auto;padding:6px"></select>
     <label class="note" style="display:flex;align-items:center;gap:6px;color:#e5e7eb">Piso<select class="in" id="plPiso" style="width:auto;padding:6px;font-size:15px"></select></label>
-    <button class="btn sm" id="plAll">Ver todo</button><button class="btn sm pri" id="plCap">📸 Capturar</button><button class="btn sm" id="plX">✕</button></div>
+    <button class="btn sm" id="plAll">Ver todo</button><button class="btn sm pri" id="plCap">📸 Capturar</button><button class="btn sm" id="plMin" title="Seguir en la app; el plano queda abierto">— Minimizar</button></div>
     <div id="plView"><canvas id="plCv"></canvas></div><div class="plp">Un dedo: mover · dos dedos: zoom · «📸 Capturar» guarda lo que ves como foto del piso elegido.</div>`;
   document.body.appendChild(d);
-  el('plX').onclick=close;el('plAll').onclick=fit;el('plCap').onclick=capture;
+  el('plMin').onclick=minimize;el('plAll').onclick=fit;el('plCap').onclick=capture;
+  el('plTabs').onclick=e=>{const x=e.target.closest('[data-x]');if(x){closeTab(+x.dataset.x);return;}const b=e.target.closest('[data-t]');if(b)activate(+b.dataset.t);};
+  const fb=document.createElement('button');fb.id='plFab';fb.type='button';fb.onclick=restore;document.body.appendChild(fb);
   el('plPiso').onchange=()=>{try{localStorage.setItem('fc_plpiso',el('plPiso').value);}catch(e){}};
   const v=el('plView'),P=new Map();let st=null;const loc=e=>{const r=v.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];};
   v.addEventListener('pointerdown',e=>{v.setPointerCapture(e.pointerId);P.set(e.pointerId,loc(e));const Q=[...P.values()];
@@ -2066,7 +2072,17 @@ function paint(g,W,H,k){// k = píxeles por px de pantalla
     String(t.t).split('\n').forEach((ln,i)=>g.fillText(ln,0,i*140));g.restore();}}
 let need=false;function draw(){if(need)return;need=true;requestAnimationFrame(()=>{need=false;if(!V)return;const c=el('plCv'),r=el('plView').getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2.5),w=Math.round(r.width*d),h=Math.round(r.height*d);
   if(c.width!==w||c.height!==h){c.width=w;c.height=h;}paint(c.getContext('2d'),w,h,d);});}
-function close(){const d=el('plv');if(d)d.classList.remove('open');V=null;}
+function tabsUI(){const t=el('plTabs');if(!t)return;t.innerHTML=T.map((x,i)=>`<span class="pltab ${x===V?'on':''}" data-t="${i}">${esc(x.name)}${x.pdf&&x.pdf.pages>1?' · p.'+x.pdf.n:''}<b data-x="${i}" aria-label="Cerrar">✕</b></span>`).join('');
+  el('plName').textContent=V?V.name:'';
+  const s=el('plPage');if(V&&V.pdf&&V.pdf.pages>1){const P0=V.pdf;s.style.display='';s.innerHTML=Array.from({length:P0.pages},(_,i)=>`<option value="${i+1}" ${i+1===P0.n?'selected':''}>Pág. ${i+1}</option>`).join('');
+    s.onchange=()=>{toast('Abriendo página…');pdfPage(P0.doc,+s.value,V.name,P0.pages,V.key);};}else s.style.display='none';
+  fabUI();}
+function fabUI(){const f=el('plFab');if(!f)return;const openV=el('plv')&&el('plv').classList.contains('open');f.style.display=T.length&&!openV?'':'none';f.textContent='📐'+(T.length>1?' '+T.length:'');f.title='Volver al plano';}
+function activate(i){if(!T[i])return;V=T[i];tabsUI();draw();}
+function closeTab(i){const x=T[i];if(!x)return;T.splice(i,1);if(V===x)V=T[Math.min(i,T.length-1)]||null;if(!V){el('plv').classList.remove('open');}else draw();tabsUI();}
+function minimize(){el('plv').classList.remove('open');fabUI();}
+function restore(){if(!T.length)return;if(!V)V=T[T.length-1];pisoOptions();el('plv').classList.add('open');tabsUI();draw();}
+function close(){minimize();}
 function pisoOptions(){const p=P(),s=el('plPiso');let last='';try{last=localStorage.getItem('fc_plpiso')||'';}catch(e){}
   s.innerHTML=p.pisos.map(pi=>`<option value="${pi.id}" ${pi.id===last?'selected':''}>${esc(pi.title)}</option>`).join('')+'<option value="__new">+ Nuevo piso</option>';}
 async function capture(){if(!V)return;const p=P();let pid=el('plPiso').value;
@@ -2079,32 +2095,38 @@ async function capture(){if(!V)return;const p=P();let pid=el('plPiso').value;
   const ref=await Store.savePhoto(blob);pi.fotos=pi.fotos||[];pi.fotos.push({id:uid(),photo:ref,draw:[],notes:[],fr:null,plano:V.name});Store.save(p);
   try{localStorage.setItem('fc_plpiso',pid);}catch(e){}
   toast('📸 Captura añadida a las fotos de '+pi.title);}
-async function show(V0){V=V0;ui();el('plName').textContent=V.name;pisoOptions();el('plv').classList.add('open');requestAnimationFrame(fit);}
-async function pdfPage(doc,n,name,pages){const pg=await doc.getPage(n),v1=pg.getViewport({scale:1}),vp=pg.getViewport({scale:Math.min(4,4000/Math.max(v1.width,v1.height))}),c=document.createElement('canvas');
+async function show(V0,key){ui();V0.key=key;const i=T.findIndex(t=>t.key===key);if(i>=0)T[i]=V0;else T.push(V0);V=V0;
+  pisoOptions();el('plv').classList.add('open');tabsUI();requestAnimationFrame(fit);}
+function has(key){return T.some(t=>t.key===key);}
+function focus(key){const i=T.findIndex(t=>t.key===key);if(i<0)return false;V=T[i];restore();return true;}
+async function pdfPage(doc,n,name,pages,key){const pg=await doc.getPage(n),v1=pg.getViewport({scale:1}),vp=pg.getViewport({scale:Math.min(4,4000/Math.max(v1.width,v1.height))}),c=document.createElement('canvas');
   c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);await pg.render({canvasContext:g,viewport:vp}).promise;
-  await show({kind:'img',img:c,name,z:1,tx:0,ty:0});
-  const s=el('plPage');if(pages>1){s.style.display='';s.innerHTML=Array.from({length:pages},(_,i)=>`<option value="${i+1}" ${i+1===n?'selected':''}>Pág. ${i+1}</option>`).join('');s.onchange=()=>{toast('Abriendo página…');pdfPage(doc,+s.value,name,pages);};}else s.style.display='none';}
+  await show({kind:'img',img:c,name,z:1,tx:0,ty:0,pdf:{doc,pages,n}},key);}
 // abrir un plano guardado (blob + extensión)
-async function open(blob,ext,name){
-  ui();el('plPage').style.display='none';
+async function open(blob,ext,name,key){
+  ui();key=key||('k'+Date.now());
   try{
     if(ext==='dxf'){toast('Leyendo plano…');const txt=await blob.text();if(/^AutoCAD Binary DXF/.test(txt)){toast('Ese DXF es binario: guárdalo como DXF de texto (ASCII)');return;}
-      const B=build(dxfGeom(parseDXF(txt)),true);if(!isFinite(B.bb[0])){toast('No encontré dibujo en ese DXF');return;}await show({kind:'vec',...B,name,z:1,tx:0,ty:0});return;}
+      const B=build(dxfGeom(parseDXF(txt)),true);if(!isFinite(B.bb[0])){toast('No encontré dibujo en ese DXF');return;}await show({kind:'vec',...B,name,z:1,tx:0,ty:0},key);return;}
     if(ext==='dwg'){toast('Cargando el lector de DWG (la primera vez tarda un poco)…');let lib;
       try{lib=await getDwg();}catch(e){toast('No se pudo cargar el lector de DWG. Comprueba la conexión o guarda el plano como DXF.');return;}
       toast('Leyendo el plano…');let svg='';try{const ptr=lib.dwg_read_data(await blob.arrayBuffer(),0);if(!ptr)throw 0;const dbx=lib.convert(ptr);try{lib.dwg_free(ptr);}catch(e){}svg=lib.dwg_to_svg(dbx);}catch(e){}
       if(!svg){toast('No pude leer ese DWG (puede ser de una versión muy reciente). Guárdalo como DXF.');return;}
       const root=new DOMParser().parseFromString(svg,'image/svg+xml').documentElement;root.querySelectorAll('script,foreignObject').forEach(n=>n.remove());
-      const B=build(svgGeom(root),false);if(!isFinite(B.bb[0])){toast('El plano está vacío o no se pudo leer');return;}await show({kind:'vec',...B,name,z:1,tx:0,ty:0});return;}
+      const B=build(svgGeom(root),false);if(!isFinite(B.bb[0])){toast('El plano está vacío o no se pudo leer');return;}await show({kind:'vec',...B,name,z:1,tx:0,ty:0},key);return;}
     if(ext==='pdf'){toast('Abriendo PDF…');let lib;try{lib=await getPdf();}catch(e){toast('No se pudo cargar el lector de PDF. Comprueba la conexión.');return;}
-      const doc=await lib.getDocument({data:new Uint8Array(await blob.arrayBuffer()),isEvalSupported:false}).promise;await pdfPage(doc,1,name,doc.numPages);return;}
+      const doc=await lib.getDocument({data:new Uint8Array(await blob.arrayBuffer()),isEvalSupported:false}).promise;await pdfPage(doc,1,name,doc.numPages,key);return;}
     if(/^(jpe?g|png|webp|gif)$/.test(ext)){const im=await new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=ko;i.src=URL.createObjectURL(blob);});
-      const c=document.createElement('canvas');c.width=im.naturalWidth;c.height=im.naturalHeight;c.getContext('2d').drawImage(im,0,0);await show({kind:'img',img:c,name,z:1,tx:0,ty:0});return;}
+      const c=document.createElement('canvas');c.width=im.naturalWidth;c.height=im.naturalHeight;c.getContext('2d').drawImage(im,0,0);await show({kind:'img',img:c,name,z:1,tx:0,ty:0},key);return;}
     toast('Ese tipo de archivo no se puede abrir');
   }catch(e){console.error(e);toast('No se pudo abrir ese plano');}
 }
-return{open};
+return{open,has,focus};
 })();
+// fotos de planos en papel: más resolución que las fotos normales para poder leer las cotas
+async function compressPlan(file){try{const u=URL.createObjectURL(file),im=await new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=ko;i.src=u;});
+  const k=Math.min(1,3200/Math.max(im.naturalWidth,im.naturalHeight)),c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*k);c.height=Math.round(im.naturalHeight*k);
+  c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);return await new Promise(r=>c.toBlob(b=>r(b||file),'image/jpeg',.88));}catch(e){return file;}}
 async function planBlob(pl){const u=await Store.photoURL(pl.file);if(!u)return null;try{return await (await fetch(u)).blob();}catch(e){return null;}}
 // Mensaje con la ubicación de la obra
 function locMsg(){const p=P(),l=p.loc||{},lt=$('#locTxt'),txt=(lt&&lt.value.trim())||l.txt||'';
@@ -2455,7 +2477,8 @@ const A={
   encAddFoto(d,b){const ph=PH();if(!ph||medNext(ph)||!medH(ph)){toast('Marca antes las 4 puntas del láser');return;}encAddMode=!encAddMode;selEnc=null;
     const eb=document.querySelector('[data-act=encAddFoto]');if(eb)eb.classList.toggle('pri',encAddMode);medMsg();drawCanvas();if(encAddMode)toast('Toca en la foto donde está el enchufe');},
   planUp(){const i=$('#fPlan');i.value='';i.click();},
-  async planOpen(d){const p=P(),pl=(p.planos||[])[+d.i];if(!pl)return;toast('Cargando plano…');const b=await planBlob(pl);if(!b){toast('No se pudo descargar el plano');return;}PLAN.open(b,pl.ext,pl.name);},
+  planCam(){const i=$('#fPlanCam');i.value='';i.click();},
+  async planOpen(d){const p=P(),pl=(p.planos||[])[+d.i];if(!pl)return;if(PLAN.focus(pl.id))return;toast('Cargando plano…');const b=await planBlob(pl);if(!b){toast('No se pudo descargar el plano');return;}PLAN.open(b,pl.ext,pl.name,pl.id);},
   async planDel(d){const p=P(),pl=(p.planos||[])[+d.i];if(!pl||!await confirmDel('el plano «'+pl.name+'»'))return;p.planos.splice(+d.i,1);Store.save(p);render();},
   medReset(){const ph=PH();if(ph){ph.med={pts:{}};Store.save(P());render();}},
   dgoma(){drawTool=drawTool==='goma'?'pen':'goma';render();},
@@ -2519,13 +2542,17 @@ async function onPhoto(e){
   photoTarget=null;
 }
 $('#fCam').onchange=onPhoto;$('#fGal').onchange=onPhoto;
+$('#fPlanCam').onchange=e=>$('#fPlan').onchange(e);
 $('#fPlan').onchange=async e=>{const fs=[...e.target.files];const p=P();if(!fs.length||!p)return;
   // se pueden subir varios planos a la vez; si es uno solo, se abre al terminar
   let ok=[];p.planos=p.planos||[];
   for(let k=0;k<fs.length;k++){const f=fs[k],full=f.name||'plano',ext=(full.includes('.')?full.split('.').pop():'').toLowerCase(),name=full.replace(/\.[^.]+$/,'').slice(0,60);
-    if(!/^(dwg|dxf|pdf|jpe?g|png|webp)$/.test(ext)){toast('«'+full+'» no es DWG, DXF ni PDF');continue;}
+    const isImg=/^image\//.test(f.type||'')||/^(jpe?g|png|webp|heic|heif)$/.test(ext);
+    if(!isImg&&!/^(dwg|dxf|pdf)$/.test(ext)){toast('«'+full+'» no es DWG, DXF, PDF ni imagen');continue;}
     toast('Guardando plano'+(fs.length>1?' '+(k+1)+' de '+fs.length:'')+'…');
-    try{const ref=await Store.saveFile(f);p.planos.push({id:uid(),name,ext,size:f.size,file:ref});ok.push([f,ext,name]);}catch(err){console.error(err);toast('No se pudo guardar «'+full+'»');}}
+    try{let blob=f,e2=ext,n2=name;
+      if(isImg){blob=await compressPlan(f);e2='jpg';if(/^(image|img_|dsc|photo|pxl_)/i.test(name)||!name)n2='Foto '+new Date().toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}
+      const ref=await Store.saveFile(blob);const pid=uid();p.planos.push({id:pid,name:n2,ext:e2,size:blob.size,file:ref});ok.push([blob,e2,n2,pid]);}catch(err){console.error(err);toast('No se pudo guardar «'+full+'»');}}
   if(!ok.length)return;Store.save(p);FOLD.plano=false;render();
   if(ok.length===1)PLAN.open(...ok[0]);else toast(ok.length+' planos guardados. Toca uno para verlo.');};
 function newFrente(ref){
