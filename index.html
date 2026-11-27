@@ -1603,7 +1603,7 @@ async function copForm(i){
   const c=i==null?{lado:(f.copetes.some(x=>x.lado==='izq')?'dcha':'izq'),aj:'-14',alt:'45',largo:''}:f.copetes[i];
   const aj0=copAj(c),ajTxt=(aj0<0?'-':'+')+fmt(Math.abs(aj0));
   const pr=modal({title:i==null?'Añadir copete':'Copete C'+(i+1),fields:[
-    {label:'Lado',sel:[['izq','Izquierda'],['dcha','Derecha'],['ambos','Ambos'],['no','Ninguno']],value:c.lado},
+    {label:'Visto',sel:[['izq','Izquierda'],['dcha','Derecha'],['ambos','Ambos'],['no','Ninguno']],value:c.lado},
     {label:'Ajuste (mm)',value:ajTxt,ph:'-14'},
     {label:'Altura (mm)',value:c.alt,num:true,ph:'45'},
     {label:'Pared (mm)',value:c.largo,num:true,ph:'p. ej. 620'},
