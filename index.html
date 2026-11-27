@@ -950,12 +950,11 @@ function renderFoto(app){
   $('#ttl').textContent=pi.title+' · foto '+(i+1);
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>Foto ${i+1} de ${n}</b><span style="display:flex;gap:6px"><button class="btn sm" data-act="fotoPrev" ${i>0?'':'disabled'}>‹</button><button class="btn sm" data-act="fotoNext" ${i<n-1?'':'disabled'}>›</button></span></div></div>
   <div><div class="dtools"><button class="btn sm ${drawTool==='mover'?'on':''}" data-act="dmover">✋ Mover</button>${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor&&drawTool==='pen'?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
-     ${[[1.5,'Muy fino'],[3,'Fino'],[7,'Grueso']].map(([w,t])=>`<button class="btn sm ${drawTool==='pen'&&drawW===w?'on':''}" data-act="dw" data-w="${w}">${t}</button>`).join('')}
      <button class="btn sm ${drawTool==='goma'?'on':''}" data-act="dgoma">🧽 Goma</button>
      <button class="btn sm ${drawTool==='nota'?'on':''}" data-act="dnota">📝 Nota</button>
      <button class="btn sm ${fingerDraw?'on':''}" data-act="dfinger" title="Permitir dibujar con el dedo">☝ Dedo</button>
      <button class="btn sm" data-act="dundo">↶ Deshacer</button><button class="btn sm dang" data-act="dclear">Borrar dibujo</button>
-     ${VIEW.z>1.01?'<button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button>':''}${qh('✋ Mover: no pinta; arrastra para moverte por la foto ampliada. Colores y grosores: dibujar. 🧽 Goma: toca o arrastra sobre un trazo para borrarlo. 📝 Nota: toca la foto para añadir una nota; toca una nota para editarla. Solo el Apple Pencil dibuja y borra; con el dedo te mueves por la foto o la página, y con dos dedos acercas o alejas. ☝ Dedo: permite dibujar también con el dedo (para el móvil).')}</div><div class="cvwrap"><canvas id="cv"></canvas></div></div>
+     ${VIEW.z>1.01?'<button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button>':''}${qh('✋ Mover: no pinta; arrastra para moverte por la foto ampliada. Colores: dibujar (la línea se ve siempre igual de fina, aunque amplíes). 🧽 Goma: toca o arrastra sobre un trazo para borrarlo. 📝 Nota: toca la foto para añadir una nota; toca una nota para editarla. Solo el Apple Pencil dibuja y borra; con el dedo te mueves por la foto o la página, y con dos dedos acercas o alejas. ☝ Dedo: permite dibujar también con el dedo (para el móvil).')}</div><div class="cvwrap"><canvas id="cv"></canvas></div></div>
   <div class="grid2" style="margin-top:10px"><button class="btn" data-act="photoCam">📷 Cambiar foto</button><button class="btn" data-act="photoGal">🖼 Cambiar (galería)</button></div>
   <div class="grid2" style="margin-top:8px"><button class="btn" data-act="photoJpg">⬇ Guardar foto anotada</button><button class="btn dang" data-act="phDel">Quitar foto</button></div>`;
   setupCanvas();
@@ -1107,28 +1106,40 @@ function arrowsFor(f,W,H){
     o[k]=HORIZ[k]?[[X,oo*H],[ee*W,oo*H]]:[[oo*W,Y],[oo*W,ee*H]];}
   return o;
 }
-function drawAnnot(ctx,img,W,H,f,collect){
-  // La foto solo lleva el dibujo a mano (sin láser ni cotas)
-  ctx.clearRect(0,0,W,H);ctx.drawImage(img,0,0,W,H);
-  const s=Math.max(W,H)/900;
-  for(const st of (f.draw||[]))strokePath(ctx,st,W,H,s);
+// Dibujo de la foto con sus trazos y notas.
+// view={z,tx,ty,dpr}: se pinta ya ampliado (la foto se remuestrea desde el original y los trazos se trazan a la resolución de la pantalla,
+// así nada se pixela). Los trazos y las notas tienen siempre el mismo tamaño en pantalla, como en un CAD.
+// Sin view (foto exportada): grosor y letra proporcionales al tamaño de la foto.
+const LINE_CSS=2.2,NOTE_CSS=14;
+function annUnit(W,H,view){return view?view.dpr/view.z:Math.max(W,H)/600;}   // px de foto que ocupa 1 px de pantalla
+function drawAnnot(ctx,img,W,H,f,collect,view){
+  ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,H);
+  if(view)ctx.setTransform(view.z,0,0,view.z,view.tx*view.dpr,view.ty*view.dpr);
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.drawImage(img,0,0,W,H);
+  const u=annUnit(W,H,view),lw=LINE_CSS*u;
+  for(const st of (f.draw||[]))strokePath(ctx,st,W,H,lw);
   const out=[];
   ctx.save();
   (f.notes||[]).forEach((n,i)=>{
-    ctx.font=`600 ${Math.round(22*s)}px system-ui,sans-serif`;
-    const tw=ctx.measureText(n.t).width,bw=tw+20*s,bh=34*s,x=n.x*W,y=n.y*H;
+    ctx.font=`600 ${NOTE_CSS*u}px system-ui,sans-serif`;
+    const tw=ctx.measureText(n.t).width,bw=tw+12*u,bh=NOTE_CSS*1.6*u,x=n.x*W,y=n.y*H;
     const r={note:i,x:x-bw/2,y:y-bh/2,w:bw,h:bh};
-    ctx.fillStyle='rgba(254,240,138,.95)';rr(ctx,r.x,r.y,r.w,r.h,6*s);ctx.fill();
-    ctx.fillStyle='#111827';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(n.t,x,y+1*s);out.push(r);
+    ctx.fillStyle='rgba(254,240,138,.95)';rr(ctx,r.x,r.y,r.w,r.h,4*u);ctx.fill();
+    ctx.fillStyle='#111827';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(n.t,x,y+0.5*u);out.push(r);
   });
   ctx.restore();
   if(collect)hits=out;
 }
-function strokePath(ctx,st,W,H,s){
+function strokePath(ctx,st,W,H,lw){
   const p=st.p;if(!p||p.length<2)return;
-  ctx.save();ctx.strokeStyle=st.c;ctx.fillStyle=st.c;ctx.lineWidth=st.w*s;ctx.lineCap='round';ctx.lineJoin='round';
-  if(p.length===2){ctx.beginPath();ctx.arc(p[0]/1000*W,p[1]/1000*H,st.w*s/2,0,7);ctx.fill();ctx.restore();return;}
-  ctx.beginPath();ctx.moveTo(p[0]/1000*W,p[1]/1000*H);for(let i=2;i<p.length;i+=2)ctx.lineTo(p[i]/1000*W,p[i+1]/1000*H);ctx.stroke();ctx.restore();
+  ctx.save();ctx.strokeStyle=st.c;ctx.fillStyle=st.c;ctx.lineWidth=lw;ctx.lineCap='round';ctx.lineJoin='round';
+  if(p.length===2||(p.length===4&&p[0]===p[2]&&p[1]===p[3])){ctx.beginPath();ctx.arc(p[0]/1000*W,p[1]/1000*H,lw/2,0,7);ctx.fill();ctx.restore();return;}
+  // curva suavizada por los puntos medios (sin picos entre puntos)
+  const X=i=>p[i]/1000*W,Y=i=>p[i+1]/1000*H;
+  ctx.beginPath();ctx.moveTo(X(0),Y(0));
+  for(let i=2;i<p.length-2;i+=2){const mx=(X(i)+X(i+2))/2,my=(Y(i)+Y(i+2))/2;ctx.quadraticCurveTo(X(i),Y(i),mx,my);}
+  ctx.lineTo(X(p.length-2),Y(p.length-2));ctx.stroke();ctx.restore();
 }
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 
@@ -1146,15 +1157,16 @@ async function setupCanvas(){
   wrap.addEventListener('touchstart',e=>{const a=document.activeElement;if(a&&a!==document.body&&a.blur)a.blur();if(isStylus(e)||VIEW.z>1||e.touches.length>1)noSys(e);},{passive:false});
   wrap.addEventListener('touchmove',e=>{if(isStylus(e)||VIEW.z>1||e.touches.length>1)noSys(e);},{passive:false});
   const touches=new Map(),ctouch=new Map();let pinch=null,pan=null;
-  const pos=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height];};
+  const pos=e=>{const r=cv.getBoundingClientRect(),k=cv.width/r.width;return[((e.clientX-r.left)*k-VIEW.tx*k)/VIEW.z,((e.clientY-r.top)*k-VIEW.ty*k)/VIEW.z];};
   const S=()=>Math.max(cv.width,cv.height)/900;
+  const U=()=>(cv.width/cv.getBoundingClientRect().width)/VIEW.z;   // px de foto por px de pantalla
   const setCross=([x,y])=>{const f=F();f.cx=Math.min(.98,Math.max(.02,x/cv.width));f.cy=Math.min(.98,Math.max(.02,y/cv.height));drawCanvas();};
   const wrapPt=e=>{const r=cv.parentElement.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];};
   // Al poner el segundo dedo se anula lo que hizo el primero (trazo, goma, cota o láser)
   const cancelStroke=()=>{if((stroke||drag||cdrag||erasing)&&UNDO.st.length){undoRestore(JSON.parse(UNDO.st.pop()));drawCanvas();}
     stroke=null;lastPt=null;cdrag=null;erasing=false;drag=false;};
-  const eraseAt=pt=>{const f=PH(),W=cv.width,H=cv.height,s=S();let hit=false;
-    f.draw=(f.draw||[]).filter(st=>{const p=st.p,tol=14*s+st.w*s/2;
+  const eraseAt=pt=>{const f=PH(),W=cv.width,H=cv.height,u=U();let hit=false;
+    f.draw=(f.draw||[]).filter(st=>{const p=st.p,tol=(14+LINE_CSS/2)*u;
       for(let i=0;i+1<p.length;i+=2){const x1=p[i]/1000*W,y1=p[i+1]/1000*H,x2=(i+3<p.length?p[i+2]:p[i])/1000*W,y2=(i+3<p.length?p[i+3]:p[i+1])/1000*H;
         if(segDist(pt[0],pt[1],x1,y1,x2,y2)<tol){hit=true;return false;}}return true;});
     if(hit){erased=true;drawCanvas();}};
@@ -1184,9 +1196,9 @@ async function setupCanvas(){
         if(h)editNote(h.note);else addNote(pt[0]/cv.width,pt[1]/cv.height);return;}
       if(drawTool==='goma'){undoPush();erasing=true;erased=false;eraseAt(pt);return;}
       undoPush();
-      const f=PH();stroke={c:drawColor,w:drawW,p:[Math.round(pt[0]/cv.width*1000),Math.round(pt[1]/cv.height*1000)]};
+      const f=PH();stroke={c:drawColor,p:[q1(pt[0]/cv.width*1000),q1(pt[1]/cv.height*1000)]};
       (f.draw=f.draw||[]).push(stroke);lastPt=pt;
-      const ctx=cv.getContext('2d');strokePath(ctx,{...stroke,p:stroke.p.concat(stroke.p)},cv.width,cv.height,S());
+      const ctx=cv.getContext('2d');strokePath(ctx,{...stroke,p:stroke.p.concat(stroke.p)},cv.width,cv.height,LINE_CSS*U());
       return;
     }
     const h=hits.slice().reverse().find(r=>pt[0]>=r.x&&pt[0]<=r.x+r.w&&pt[1]>=r.y&&pt[1]<=r.y+r.h);
@@ -1212,10 +1224,10 @@ async function setupCanvas(){
     if(erasing){eraseAt(pos(e));return;}
     if(stroke&&mode==='draw'){
       const evs=(e.getCoalescedEvents&&e.getCoalescedEvents().length)?e.getCoalescedEvents():[e];
-      const ctx=cv.getContext('2d'),sc=S(),min=1.5*(window.devicePixelRatio||1);
-      ctx.save();ctx.strokeStyle=stroke.c;ctx.lineWidth=stroke.w*sc;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(lastPt[0],lastPt[1]);
+      const ctx=cv.getContext('2d'),u=U(),min=1.2*u;
+      ctx.save();ctx.strokeStyle=stroke.c;ctx.lineWidth=LINE_CSS*u;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(lastPt[0],lastPt[1]);
       for(const ev of evs){const pt=pos(ev);if(Math.hypot(pt[0]-lastPt[0],pt[1]-lastPt[1])<min)continue;
-        ctx.lineTo(pt[0],pt[1]);stroke.p.push(Math.round(pt[0]/cv.width*1000),Math.round(pt[1]/cv.height*1000));lastPt=pt;}
+        ctx.lineTo(pt[0],pt[1]);stroke.p.push(q1(pt[0]/cv.width*1000),q1(pt[1]/cv.height*1000));lastPt=pt;}
       ctx.stroke();ctx.restore();
     }
   };
@@ -1230,12 +1242,14 @@ async function setupCanvas(){
     if(stroke){stroke=null;lastPt=null;drawCanvas();Store.save(P());}
   };
 }
+function q1(v){return Math.round(v*100)/100;}   // coordenadas con 2 decimales (0-1000): trazos finos aunque se amplíe mucho
 function segDist(px,py,x1,y1,x2,y2){const dx=x2-x1,dy=y2-y1,l=dx*dx+dy*dy;let t=l?((px-x1)*dx+(py-y1)*dy)/l:0;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(x1+t*dx),py-(y1+t*dy));}
 function applyView(){
   const cv=$('#cv');if(!cv)return;const w=cv.parentElement.clientWidth,h=cv.clientHeight;
   if(VIEW.z<=1.001)VIEW={z:1,tx:0,ty:0};
   VIEW.tx=Math.min(0,Math.max(w-w*VIEW.z,VIEW.tx));VIEW.ty=Math.min(0,Math.max(h-h*VIEW.z,VIEW.ty));
-  cv.style.transform=VIEW.z>1?`translate(${VIEW.tx}px,${VIEW.ty}px) scale(${VIEW.z})`:'';
+  cv.style.transform='';
+  if(!applyView.raf)applyView.raf=requestAnimationFrame(()=>{applyView.raf=0;drawCanvas();});
   cv.style.touchAction=(VIEW.z<=1&&!(fingerDraw&&drawTool!=='mover'))?'pan-y':'none';   // sin ampliar, un dedo mueve la página; el lápiz se gestiona aparte
 }
 function drawCanvas(){
@@ -1243,7 +1257,7 @@ function drawCanvas(){
   const w=cv.parentElement.clientWidth||600,dpr=Math.min(window.devicePixelRatio||1,2.5);
   const W=Math.round(w*dpr),H=Math.round(W*curImg.naturalHeight/curImg.naturalWidth);
   if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
-  drawAnnot(cv.getContext('2d'),curImg,W,H,f,true);
+  drawAnnot(cv.getContext('2d'),curImg,W,H,f,true,{z:VIEW.z,tx:VIEW.tx,ty:VIEW.ty,dpr:W/w});
 }
 window.addEventListener('resize',()=>drawCanvas());
 
