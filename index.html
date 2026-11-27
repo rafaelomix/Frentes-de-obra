@@ -1522,7 +1522,7 @@ function encKbStart(){
   if(ED)encDictStop();
   const els=[...$('#mbox').querySelectorAll('[data-i]')].sort((a,b)=>a.dataset.i-b.dataset.i),inp=$('#edKbIn');if(!inp)return;
   ED={els,s:0,rec:null,steps:(encDictUI.cur||{}).steps||ESTEPS,kb:true,used:0,lastVal:'',lastChange:0};
-  inp.value='';inp.style.display='';inp.focus();$('#edKb').textContent='■ Parar teclado';
+  inp.value='';inp.style.display='';inp.focus();$('#edKb').textContent=(encDictUI.cur||{}).short?'■ Parar':'■ Parar teclado';
   const fresh=()=>{const v=inp.value;if(ED.used>v.length)ED.used=0;return v.slice(ED.used).trim();};
   const proc=()=>{if(!ED||!ED.kb)return;const t=fresh();if(!t)return;ED.used=inp.value.length;
     if(!encDictApply(t))encDictShow('No he entendido: «'+t+'»');};
@@ -1538,12 +1538,12 @@ function encDictStart(){
   ED={els,s:0,rec:null,steps:(encDictUI.cur||{}).steps||ESTEPS};encDictListen();encDictShow('');
 }
 function encDictStop(){if(!ED)return;if(ED.col)clearTimeout(ED.col.timer);if(ED.poll)clearInterval(ED.poll);const r=ED.rec;ED=null;try{r&&r.stop();}catch(e){}
-  {const i=$('#edKbIn');if(i){i.style.display='none';i.value='';}const k=$('#edKb');if(k)k.textContent='⌨ Dictar con teclado';}
-  document.querySelectorAll('#mbox .dicting').forEach(x=>x.classList.remove('dicting'));const g=$('#edGo');if(g)g.textContent='🎤 Dictar '+((encDictUI.cur||{}).lbl||'enchufe');}
+  {const i=$('#edKbIn');if(i){i.style.display='none';i.value='';}const k=$('#edKb');if(k)k.textContent=(encDictUI.cur||{}).short?'⌨ Teclado':'⌨ Dictar con teclado';}
+  document.querySelectorAll('#mbox .dicting').forEach(x=>x.classList.remove('dicting'));const g=$('#edGo');if(g)g.textContent=(encDictUI.cur||{}).short?'🎤 Dictar':'🎤 Dictar '+((encDictUI.cur||{}).lbl||'enchufe');}
 function encDictShow(heard){
   if(!ED)return;const st=ED.steps[ED.s],m=$('#edMsg'),g=$('#edGo');if(!m){encDictStop();return;}
   ED.els.forEach((x,j)=>x.classList.toggle('dicting',st&&j===st.i));
-  if(g&&!ED.kb)g.textContent='■ Parar dictado';
+  if(g&&!ED.kb)g.textContent=(encDictUI.cur||{}).short?'■ Parar':'■ Parar dictado';
   m.innerHTML=st?`<b>${ED.s+1}. ${esc(st.t)}</b> — ${esc(st.h||'di la medida en '+UNITTXT[dictUnit])}<br>${esc(heard||'')}`:`<b>Listo.</b> Di «guardar» o pulsa el botón. ${esc(heard||'')}`;
 }
 function encDictListen(){
@@ -1631,8 +1631,8 @@ async function copForm(i){
   encDictUI('copete',CSTEPS);
   // Medida de pared a la derecha de «Dictar con teclado»
   {const kb=$('#edKb'),pw=[...$('#mbox').querySelectorAll('.fld')].find(x=>x.querySelector('[data-i="3"]'));
-    if(kb&&pw){const w=document.createElement('div');w.style.cssText='display:flex;gap:8px;align-items:center;flex:1 1 100%';kb.before(w);w.append(kb,pw);
-      kb.style.flex='none';pw.style.cssText='flex:1;min-width:0;margin:0';const lb=pw.querySelector('label');if(lb)lb.style.display='none';
+    if(kb&&pw){const row=kb.parentElement,go=$('#edGo');row.style.flexWrap='nowrap';row.style.alignItems='center';row.style.gap='6px';row.append(pw);
+      kb.style.flex='none';if(go){go.style.flex='none';go.textContent='🎤 Dictar';}kb.textContent='⌨ Teclado';encDictUI.cur.short=true;pw.style.cssText='flex:1;min-width:0;margin:0';const lb=pw.querySelector('label');if(lb)lb.style.display='none';
       const ip=pw.querySelector('input');if(ip)ip.placeholder='Pared (mm)';}}
   const r=await pr;encDictStop();
   if(!r.v)return;
