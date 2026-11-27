@@ -488,10 +488,10 @@ let fingerDraw=false;try{fingerDraw=localStorage.getItem('fc_fdraw')==='true';}c
 let drawTool='mover';          // mover | pen | goma | nota
 // Persianas: siempre recogidas al abrir un frente
 let FOLD={};
-const FOLD_OPEN={pieza:1,pfre:1};   // persianas abiertas por defecto
+const FOLD_OPEN={pieza:1,pfre:1,pfot:1};   // persianas abiertas por defecto
 const foldOff=k=>(k in FOLD)?!!FOLD[k]:!FOLD_OPEN[k];   // true = recogida
 // color propio de cada persiana
-const FOLDCOL={pfot:'#b45309',pfre:'#2563eb',cfg:'#475569',med:'#2563eb',enc:'#7c3aed',cop:'#0d9488',pieza:'#16a34a',ploc:'#dc2626',pexp:'#ea580c',pisoexp:'#ea580c',sync:'#0891b2',copia:'#64748b'};
+const FOLDCOL={pfot:'#b45309',pnot:'#a16207',pfre:'#2563eb',cfg:'#475569',med:'#2563eb',enc:'#7c3aed',cop:'#0d9488',pieza:'#16a34a',ploc:'#dc2626',pexp:'#ea580c',pisoexp:'#ea580c',sync:'#0891b2',copia:'#64748b'};
 function foldHead(k,title){const c=FOLDCOL[k]||'#374151';return `<button type="button" class="fold ${foldOff(k)?'closed':''}" data-fold="${k}" style="color:${c};border-left:5px solid ${c};padding-left:10px;margin-left:-4px"><span>${title}</span><span class="chev2" style="color:${c}">▾</span></button>`;}
 function foldCls(k){return 'foldc'+(foldOff(k)?' closed':'');}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const k=b.dataset.fold;FOLD[k]=!foldOff(k);
@@ -913,10 +913,10 @@ function renderPiso(app){
   const p=P(),pi=PI();$('#ttl').textContent=pi.title;
   const fotos=pi.fotos||[],cps=pi.copetes||[];
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
-  <div class="card"><div style="font-weight:600;margin:0 0 6px -4px;color:#b45309;border-left:5px solid #b45309;padding-left:10px">Notas</div><textarea class="in" id="piNota" rows="3" placeholder="Notas de este piso…" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit">${esc(pi.nota||'')}</textarea></div>
   <div class="card">${foldHead('pfot','Fotos'+(fotos.length?' ('+fotos.length+')':''))}<div class="${foldCls('pfot')}" data-foldc="pfot" style="margin-top:8px">
    ${fotos.length?`<div class="phgrid">${fotos.map((x,i)=>`<button class="phcell" data-act="openFoto" data-i="${i}"><img data-ph="${esc(JSON.stringify(x.photo))}" alt=""><span>${i+1}${(x.draw&&x.draw.length)||(x.notes&&x.notes.length)?' ✏':''}</span></button>`).join('')}</div>`:''}
    <div class="grid2"><button class="btn" data-act="pfCam">📷 Hacer foto</button><button class="btn" data-act="pfGal">🖼 Galería</button></div></div></div>
+  <div class="card">${foldHead('pnot','Notas'+((pi.nota||'').trim()?' ✏':''))}<div class="${foldCls('pnot')}" data-foldc="pnot" style="margin-top:8px"><textarea class="in" id="piNota" rows="3" placeholder="Notas de este piso…" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit">${esc(pi.nota||'')}</textarea></div></div>
   <div class="card">${foldHead('pfre','Frentes'+(pi.frentes.length?' ('+pi.frentes.length+')':''))}<div class="${foldCls('pfre')}" data-foldc="pfre" style="margin-top:8px">`+
   pi.frentes.map((f,i)=>{const n=filled(f),ne=(f.enchufes||[]).length;
     return `<button class="item" data-act="openFrente" data-id="${f.id}" style="padding:10px"><div class="grow"><div class="t">${esc(f.name||'Frente '+(i+1))}</div><div class="s" style="color:${n===8?'var(--ok)':'var(--acc2)'}">${n===8?'✓ Medidas completas':n+' de 8 medidas'}${ne?' · <span style="color:var(--mut)">'+ne+' enchufe'+(ne==1?'':'s')+'</span>':''}${f.cfg?' · <span style="color:var(--mut)">config. propia</span>':''}</div></div><span class="chev">›</span></button>`;}).join('')+
