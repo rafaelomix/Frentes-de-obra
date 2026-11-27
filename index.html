@@ -904,8 +904,7 @@ function renderPromo(app){
   <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">${foldHead('ploc','📍 Ubicación de la obra'+(loc.txt?' · '+esc(loc.txt):''))}<div class="${foldCls('ploc')}" data-foldc="ploc" style="margin-top:8px">
    <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
-   <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div>
-   <button class="btn sm full" data-act="locWa" style="margin-top:8px;background:#25d366;color:#fff;border-color:#25d366">💬 Enviar ubicación por WhatsApp</button></div></div></div>
+   <div style="display:flex;gap:6px"><button class="btn sm" data-act="locSave" style="flex:1">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav" style="flex:1">🧭 Navegar a la obra</button><button class="btn sm" data-act="locWa" title="Enviar por WhatsApp" aria-label="Enviar por WhatsApp" style="flex:0 0 auto;padding:6px 10px;background:#25d366;color:#fff;border-color:#25d366">💬</button>${navigator.share?'<button class="btn sm" data-act="locShare" title="Compartir" aria-label="Compartir" style="flex:0 0 auto;padding:6px 10px">📤</button>':''}</div></div></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     const fph=(allPhotos(pi)[0]||{}).photo;
@@ -1614,8 +1613,8 @@ async function copForm(i){
     // Lado: tres botones grandes en vez del desplegable
     const sel=fl[0]&&fl[0].querySelector('select');
     if(sel){sel.style.display='none';
-      const bx=document.createElement('div');bx.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
-      bx.innerHTML=[['izq','⬅ Izquierda'],['dcha','Derecha ➡'],['ambos','⬅ Ambos ➡'],['no','Ninguno']].map(([v,t])=>`<button type="button" class="btn" data-lado="${v}" style="padding:16px 4px;font-size:17px;font-weight:700">${t}</button>`).join('');
+      const bx=document.createElement('div');bx.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:5px';
+      bx.innerHTML=[['izq','⬅ Izq'],['dcha','Dcha ➡'],['ambos','⬅ Ambos ➡'],['no','Ninguno']].map(([v,t])=>`<button type="button" class="btn" data-lado="${v}" style="padding:12px 0;font-size:13px;font-weight:700;white-space:nowrap;min-width:0">${t}</button>`).join('');
       sel.after(bx);
       const paint=()=>bx.querySelectorAll('[data-lado]').forEach(b=>{const on=b.dataset.lado===sel.value;b.classList.toggle('pri',on);b.style.outline=on?'3px solid #fdba74':'';});
       bx.onclick=e=>{const b=e.target.closest('[data-lado]');if(!b)return;sel.value=b.dataset.lado;paint();};
@@ -1656,10 +1655,13 @@ async function encForm(i){
     buttons:i==null?[{label:'Cancelar',v:null},{label:'Añadir',v:'ok',pri:true}]:[{label:'Borrar',v:'del',dang:true},{label:'Cancelar',v:null},{label:'Guardar',v:'ok',pri:true}]});
   {const fl=[...$('#mbox').querySelectorAll('.fld')],sT=fl[4]&&fl[4].querySelector('select'),sD=fl[5]&&fl[5].querySelector('select');
     const sL=fl[0]&&fl[0].querySelector('select'),sV=fl[2]&&fl[2].querySelector('select');
-    if(sL)bigChoice(sL,[['izq','⬅ Izquierda'],['dcha','Derecha ➡']]);
-    if(sV)bigChoice(sV,[['arriba','⬆ Por encima'],['abajo','⬇ Por debajo']]);
+    // Lado y altura en la misma línea: ⬅ Izq | Dcha ➡ | ⬆ Encima | ⬇ Debajo
+    const sm=bx=>{if(bx)bx.style.gap='5px';if(bx)bx.querySelectorAll('[data-v]').forEach(b=>{b.style.padding='12px 0';b.style.fontSize='13px';b.style.whiteSpace='nowrap';b.style.minWidth='0';});};
+    if(sL)sm(bigChoice(sL,[['izq','⬅ Izq'],['dcha','Dcha ➡']]));
+    if(sV)sm(bigChoice(sV,[['arriba','⬆ Encima'],['abajo','⬇ Debajo']]));
+    if(fl[0]&&fl[2]){const w=document.createElement('div');w.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:6px';fl[0].before(w);w.append(fl[0],fl[2]);}
     if(sT&&sD){bigChoice(sD,[['h','↔ Horizontal'],['v','↕ Vertical']]);
-      bigChoice(sT,[['1','Sencillo'],['2','Doble'],['3','Triple'],['4','Cuádruple']],v=>{fl[5].style.display=v==='1'?'none':'';});}}
+      sm(bigChoice(sT,[['1','Sencillo'],['2','Doble'],['3','Triple'],['4','Cuádruple']],v=>{fl[5].style.display=v==='1'?'none':'';}));}}
   encDictUI();
   const r=await pr;encDictStop();
   if(!r.v)return;
@@ -1688,6 +1690,11 @@ async function annotatedJpg(f){
   return new Uint8Array(await b.arrayBuffer());
 }
 
+// Mensaje con la ubicación de la obra
+function locMsg(){const p=P(),l=p.loc||{},lt=$('#locTxt'),txt=(lt&&lt.value.trim())||l.txt||'';
+  if(l.lat==null&&!txt){toast('Guarda la posición o escribe la dirección de la obra');return null;}
+  const url='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(l.lat!=null?l.lat+','+l.lng:txt);
+  const text='📍 Obra: '+p.title+(txt?'\n'+txt:'');return{text,url,msg:text+'\n'+url};}
 // ---------- Envío por correo ----------
 // Descargar y enviar por correo son opciones separadas: expMode='mail' manda el archivo por correo sin descargarlo
 let expMode='dl';
@@ -1978,13 +1985,9 @@ const A={
     if(!dest){toast('Guarda la posición o escribe la dirección de la obra');return;}
     window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest),'_blank');
   },
-  locWa(){
-    const p=P(),l=p.loc||{},lt=$('#locTxt'),txt=(lt&&lt.value.trim())||l.txt||'';
-    if(l.lat==null&&!txt){toast('Guarda la posición o escribe la dirección de la obra');return;}
-    const url='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(l.lat!=null?l.lat+','+l.lng:txt);
-    const msg='📍 Obra: '+p.title+(txt?'\n'+txt:'')+'\n'+url;
-    window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
-  },
+  locWa(){const m=locMsg();if(m)window.open('https://wa.me/?text='+encodeURIComponent(m.msg),'_blank');},
+  // iPad/iPhone/Android: menú «Compartir» del sistema (WhatsApp, Mensajes, Mail…)
+  async locShare(){const m=locMsg();if(!m)return;try{await navigator.share({title:'Obra: '+P().title,text:m.text,url:m.url});}catch(e){if(e&&e.name!=='AbortError')A.locWa();}},
   addCop(){INLINE_HOST=$('#copHost');copForm(null);},
   editCop(d){INLINE_HOST=$('#copHost');copForm(+d.i);},
   lzCon(){if(!Laser.soportado()){toast(/iPad|iPhone|Macintosh/.test(navigator.userAgent)?'En iPad abre la app en el navegador Bluefy para usar el láser.':'Este navegador no tiene Bluetooth. Usa Chrome.');return;}if(Laser.conectado()){Laser.desconectar();return;}Laser.conectar();},
