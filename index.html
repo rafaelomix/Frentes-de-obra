@@ -75,6 +75,10 @@ input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:tex
 .plp{color:#9ca3af;font-size:12px;padding:6px 12px calc(8px + env(safe-area-inset-bottom))}
 #medLay{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 #medLay input{position:absolute;pointer-events:auto;width:70px;box-sizing:border-box;padding:4px 2px;font-size:17px;font-weight:700;text-align:center;border-radius:7px;background:rgba(255,255,255,.93);color:#111827;-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+#medLay .descchip{position:absolute;pointer-events:auto;padding:5px 10px;border-radius:14px;border:2px solid #fff;background:rgba(17,24,39,.85);color:#fff;font-weight:700;font-size:14px;white-space:nowrap}#medLay .descchip.on{background:#2563eb}#medLay .descchip.vis{background:#ea580c}
+#descPanel{position:absolute;pointer-events:auto;z-index:4;background:#fff;color:#111827;border-radius:10px;padding:10px;width:220px;box-shadow:0 6px 18px rgba(0,0,0,.35);-webkit-user-select:text;user-select:text}
+#medLay #descPanel input{position:static;width:70px;font-size:16px;border:1px solid #cbd5e1;border-width:1px}
+#descPanel .dpb{padding:6px 9px;border-radius:7px;border:1px solid #cbd5e1;background:#fff;font-weight:700;font-size:14px;min-width:38px}#descPanel .dpb.on{background:#2563eb;color:#fff;border-color:#2563eb}#descPanel .dpb.vis{background:#ea580c;color:#fff;border-color:#ea580c}
 #medLay input::placeholder{font-size:11px;font-weight:600;color:#6b7280}
 .fold{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:0;padding:0;font:inherit;font-weight:600;color:inherit;text-align:left;cursor:pointer}
 .fold .chev2{font-size:18px;color:#6b7280;transition:transform .15s}.fold.closed .chev2{transform:rotate(-90deg)}
@@ -875,7 +879,7 @@ const P=()=>S.promos.find(p=>p.id===route.p);
 const PI=()=>{const p=P();return p&&p.pisos.find(x=>x.id===route.pi);};
 const F=()=>{const pi=PI();return pi&&pi.frentes.find(x=>x.id===route.f);};
 function filled(f){return KEYS.filter(k=>num(f.m[k])!=null).length;}
-function go(r){dictStop();encAddMode=false;selEnc=null;VIEW={z:1,tx:0,ty:0};PHI=0;FOLD={};drawTool='mover';if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
+function go(r){dictStop();encAddMode=false;selEnc=null;descMode=false;descSide=null;VIEW={z:1,tx:0,ty:0};PHI=0;FOLD={};drawTool='mover';if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
 
 function fileBtn(label,cls,kind){
   const acc=kind==='imp'?'.json,application/json':'image/*',cap=kind.startsWith('cam')?' capture="environment"':'';
@@ -1372,10 +1376,10 @@ function linSolve(A,b){const n=b.length,M=A.map((r,i)=>[...r,b[i]]);
   return M.map((r,i)=>r[n]/r[i]);}
 function mkFrente(pi){const f={id:uid(),name:'Frente '+(pi.frentes.length+1),cx:.5,cy:.55,m:{},enchufes:[]};pi.frentes.push(f);Store.save(P());return f;}
 function medF(){return frOf(PH());}
-function medBar(){return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><div class="note grow" id="medMsg" style="font-weight:600;flex:1"></div><button class="btn sm ${encAddMode?'pri':''}" data-act="encAddFoto" style="flex:none">🔌 Enchufe</button><button class="btn sm" data-act="medReset" style="flex:none">↺ Marcar de nuevo</button></div>`;}
+function medBar(){return `<div class="note" id="medMsg" style="font-weight:600;margin:0 2px 6px"></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button class="btn sm ${encAddMode?'pri':''}" data-act="encAddFoto">🔌 Enchufe</button><button class="btn sm ${descMode?'pri':''}" data-act="descFoto">✂ Descuentos</button><button class="btn sm" data-act="medReset" style="margin-left:auto">↺ Marcar de nuevo</button></div>`;}
 function frSel(ph){const pi=PI();return `<label class="note" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">Frente<select class="in" id="phFr" style="flex:1;min-width:0;font-size:16px;padding:8px"><option value="">— Ninguno (foto general) —</option>${pi.frentes.map((f,i)=>`<option value="${f.id}" ${ph&&f.id===ph.fr?'selected':''}>${esc(f.name||'Frente '+(i+1))}</option>`).join('')}<option value="__new">+ Nuevo frente</option></select></label>`;}
 function medMsg(){const el=$('#medMsg');if(!el)return;const k=medNext(PH());el.style.color=k?'#c2410c':'';
-  el.textContent=k?(MSTEPS.findIndex(x=>x[0]===k)+1)+'/4 · '+MSTEPS.find(x=>x[0]===k)[1]+'.':(encAddMode?'Toca en la foto donde está el enchufe.':'Escribe cada medida en cm en su casilla (p. ej. 223,5); en Medidas se guarda en mm. Toca un enchufe para ver sus cotas.')+' Si hace falta, arrastra las esquinas o el punto rojo (cruce).';}
+  el.textContent=k?(MSTEPS.findIndex(x=>x[0]===k)+1)+'/4 · '+MSTEPS.find(x=>x[0]===k)[1]+'.':(descMode?'Toca un lado para cambiar su descuento, esquina o visto. La línea naranja discontinua es la pieza final.':encAddMode?'Toca en la foto donde está el enchufe.':'Escribe cada medida en cm en su casilla (p. ej. 223,5); en Medidas se guarda en mm. Toca un enchufe para ver sus cotas.')+' Si hace falta, arrastra las esquinas o el punto rojo (cruce).';}
 // Dibujo del rectángulo, la cruz y las flechas (solo en pantalla, no sale en la foto exportada)
 function drawMed(ctx,W,H,ph,u,stat){
   if(medNext(ph)){if(stat)return;const p=(ph.med&&ph.med.pts)||{};ctx.save();
@@ -1401,6 +1405,10 @@ function drawMed(ctx,W,H,ph,u,stat){
     for(let j=0;j<n;j++){const o=(j-(n-1)/2)*sp,x=P0[0]+(e.ori==='v'?0:o),y=P0[1]+(e.ori==='v'?o:0);
       ctx.fillStyle=sel?'rgba(37,99,235,.95)':'rgba(37,99,235,.75)';ctx.strokeStyle='#fff';ctx.lineWidth=(sel?2.5:1.5)*u;ctx.beginPath();ctx.arc(x,y,6.5*u,0,7);ctx.fill();ctx.stroke();}
     ctx.fillStyle='#fff';ctx.font=`700 ${9*u}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('E'+(i+1),P0[0],P0[1]-(n>1&&e.ori==='v'?(n/2+.6)*sp:12*u));});
+  if(descMode&&!stat){const f=frOf(ph);if(f){const vi=vistoOf(f),e=esqOf(f),Q=m.q.map(P2);
+    if(vi.l)line(Q[0],Q[3],'#ea580c',6*u);if(vi.r)line(Q[1],Q[2],'#ea580c',6*u);
+    for(const[k,a,b]of[['l',0,3],['r',1,2]])if(e[k]){for(const c of[Q[a],Q[b]]){ctx.fillStyle='#facc15';ctx.strokeStyle='#111827';ctx.lineWidth=1.5*u;ctx.beginPath();ctx.arc(c[0],c[1],6*u,0,7);ctx.fill();ctx.stroke();}}
+    const fin=descFinUW(f,m.c);if(fin){const F2=fin.map(q=>I(q[0],q[1]));ctx.strokeStyle='#f97316';ctx.lineWidth=2.5*u;ctx.setLineDash([7*u,4*u]);ctx.beginPath();F2.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));ctx.closePath();ctx.stroke();ctx.setLineDash([]);}}}
   // vista fija: en vez de tiradores, las medidas escritas (en cm) en su sitio
   if(stat){const f=frOf(ph),lay2=medLayout(m.c);ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`700 ${13*u}px system-ui`;
     for(const k of KEYS){const v=num(f&&f.m&&f.m[k]);if(v==null)continue;const q=I(...lay2[k][2]),t=fmt(v/10),w=ctx.measureText(t).width+10*u,hh=19*u;
@@ -1434,6 +1442,30 @@ function encListHTML(f){return (f.enchufes||[]).map((e,i)=>`<button class="item"
 // tras cambiar un enchufe desde la foto: refresca la lista y la pieza sin volver a pintar toda la pantalla
 function encRefresh(){if(route.v!=='frente')return;renderPrev();const l=$('#encList'),f=F();if(l&&f)l.innerHTML=encListHTML(f);
   const hd=document.querySelector('[data-fold="enc"] span');if(hd&&f)hd.textContent='Enchufes'+((f.enchufes||[]).length?' ('+f.enchufes.length+')':'');}
+// ===== Descuentos y esquinas en la foto =====
+let descMode=false,descSide=null;
+function ownCfgF(f){if(!f.cfg){const c0=cfgOf(P(),null);f.cfg={cuts:{...c0.cuts},dia:c0.dia,sep:c0.sep};}return f.cfg;}
+function descSetCut(f,k,v){const n=num(v);if(n==null)return;ownCfgF(f).cuts[k]=n;}
+function descSetEsq(f,k,v){f.esq=f.esq||{};f.esq[k]=v==='0'||v===0?'':String(v);}
+function descToggleVisto(f,k){f.visto=f.visto||{};f.visto[k]=!f.visto[k];
+  if(f.cfg&&f.cfg.cuts){if(f.visto[k]){f.vistoPrev=f.vistoPrev||{};f.vistoPrev[k]=f.cfg.cuts[k];f.cfg.cuts[k]=0;}else if(f.vistoPrev&&f.vistoPrev[k]!=null){f.cfg.cuts[k]=f.vistoPrev[k];delete f.vistoPrev[k];}}}
+function descLabel(f,k){const p=P(),base=(f.cfg?f.cfg.cuts:p.cuts)[k],e=esqOf(f),vi=vistoOf(f);
+  if(k==='t')return'↑ '+fmt(base);if(k==='b')return'↓ '+fmt(base);
+  const a=k==='l'?'⬅ ':'',z=k==='r'?' ➡':'';const parts=[];if(vi[k])parts.push('visto');if(e[k])parts.push((vi[k]?'':'esq ')+fAj(e[k]));if(!parts.length)parts.push(fmt(base));return a+parts.join(' ')+z;}
+// posición (u,w) de cada etiqueta, un poco hacia dentro del borde
+const DESC_UW={t:[.5,.07],b:[.5,.93],l:[.07,.5],r:[.93,.5]};
+// pieza final (con descuentos) en el rectángulo de la foto, a partir de las medidas
+function descFinUW(f,c){const cf=cfgOf(P(),f),g=geom(f,cf.cuts);if(!g)return null;const m=g.m,[cu,cw]=c,ct=cf.cuts;
+  const U=(x,L)=>x<0?cu*(1+x/L):cu+(1-cu)*(x/L),W=(y,H)=>y>0?cw*(1-y/H):cw+(1-cw)*(-y/H);
+  return[[U(-m.lt+ct.l,m.lt),W(m.ul-ct.t,m.ul)],[U(m.rt-ct.r,m.rt),W(m.ur-ct.t,m.ur)],[U(m.rb-ct.r,m.rb),W(-m.dr+ct.b,m.dr)],[U(-m.lb+ct.l,m.lb),W(-m.dl+ct.b,m.dl)]];}
+function descPanelHTML(f,k){const p=P(),base=(f.cfg?f.cfg.cuts:p.cuts)[k],e=esqOf(f),vi=vistoOf(f),lock=(k==='l'||k==='r')&&(vi[k]||e[k]);
+  const T={t:'Arriba',b:'Abajo',l:'Izquierda',r:'Derecha'}[k];
+  let h=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><b style="flex:1">${T}</b><button type="button" data-dp="ok" class="dpb">✓</button></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px">Descuento<input class="in" data-dpcut="${k}" inputmode="decimal" value="${esc(fmt(lock?0:base))}" ${lock?'disabled':''} style="width:70px;padding:6px;font-size:16px;text-align:center"> mm</label>`;
+  if(k==='l'||k==='r'){const cur=e[k]||0;
+    h+=`<div style="font-size:13px;margin:8px 0 4px">Esquina</div><div style="display:flex;gap:4px;flex-wrap:wrap">${[0,-14,14,-22,22].map(v=>`<button type="button" class="dpb ${v===cur?'on':''}" data-dpesq="${v>0?'+'+v:v}">${v===0?'0':(v>0?'+':'−')+Math.abs(v)}</button>`).join('')}</div>
+      <button type="button" class="dpb ${vi[k]?'vis':''}" data-dpvis="1" style="width:100%;margin-top:8px">${vi[k]?'✓ ':''}Visto</button>`;}
+  return h;}
 function placeMedInputs(){
   const lay=$('#medLay'),cv=$('#cv');if(!lay||!cv)return;const ph=PH(),h=medOn()?medH(ph):null,f=h&&medF();
   if(!h||!f){lay.innerHTML='';return;}
@@ -1447,9 +1479,29 @@ function placeMedInputs(){
     if(document.activeElement!==ip){const v=num(f.m&&f.m[k]);ip.value=v==null?'':fmt(v/10);}   // en la foto, en cm
     const q=h(...medLayout(ph.med.c)[k][2]),x=q[0]*w*VIEW.z+VIEW.tx,y=q[1]*hh*VIEW.z+VIEW.ty;
     ip.style.left=(x-35)+'px';ip.style.top=(y-17)+'px';ip.style.display=(x<-30||y<-20||x>w+30||y>hh+20)?'none':'';
-    ip.style.opacity=selEnc!=null?'.3':'';}   // con un enchufe elegido, las medidas quedan atenuadas
-  // enchufe seleccionado: sus dos cotas en cm y los botones de tipo
+    ip.style.opacity=selEnc!=null?'.3':'';if(descMode)ip.style.display='none';}   // con un enchufe elegido, las medidas quedan atenuadas
   const toS=q=>[q[0]*w*VIEW.z+VIEW.tx,q[1]*hh*VIEW.z+VIEW.ty];
+  // modo descuentos: una etiqueta por lado y el panel del lado elegido
+  lay.querySelectorAll('[data-desc],#descPanel').forEach(x=>{if(!descMode)x.remove();});
+  if(descMode){lay.querySelectorAll('[data-ek],#encChips').forEach(x=>x.remove());
+    for(const k of ['t','b','l','r']){let b=lay.querySelector(`[data-desc="${k}"]`);
+      if(!b){b=document.createElement('button');b.type='button';b.dataset.desc=k;b.className='descchip';b.onclick=ev=>{ev.preventDefault();descSide=descSide===k?null:k;placeMedInputs();};lay.appendChild(b);}
+      b.textContent=descLabel(f,k);b.classList.toggle('on',descSide===k);const vi=vistoOf(f),e=esqOf(f);b.classList.toggle('vis',!!((k==='l'||k==='r')&&(vi[k]||e[k])));
+      const[x,y]=toS(h(...DESC_UW[k]));b.style.left=(x-b.offsetWidth/2)+'px';b.style.top=(y-15)+'px';}
+    let pn=lay.querySelector('#descPanel');
+    if(!descSide){if(pn)pn.remove();}
+    else{if(!pn||pn.dataset.k!==descSide){if(pn)pn.remove();pn=document.createElement('div');pn.id='descPanel';pn.dataset.k=descSide;lay.appendChild(pn);
+        pn.onclick=ev=>{const f=medF(),k=pn.dataset.k;if(!f)return;const t=ev.target.closest('[data-dp],[data-dpesq],[data-dpvis]');if(!t)return;ev.preventDefault();
+          if(t.dataset.dp==='ok'){descSide=null;placeMedInputs();return;}
+          if(t.dataset.dpesq!=null)descSetEsq(f,k,t.dataset.dpesq);if(t.dataset.dpvis)descToggleVisto(f,k);
+          Store.save(P());pn.innerHTML=descPanelHTML(f,k);drawCanvas();};
+        pn.oninput=ev=>{const i=ev.target.closest('[data-dpcut]');const f=medF();if(!i||!f)return;descSetCut(f,i.dataset.dpcut,i.value);Store.save(P());
+          const b=lay.querySelector(`[data-desc="${i.dataset.dpcut}"]`);if(b)b.textContent=descLabel(f,i.dataset.dpcut);drawCanvas();};
+        pn.innerHTML=descPanelHTML(f,descSide);}
+      const[x,y]=toS(h(...DESC_UW[descSide])),pw=pn.offsetWidth||220,ph2=pn.offsetHeight||150;
+      let L=x-pw/2,Tp=descSide==='b'?y-ph2-22:y+20;L=Math.max(4,Math.min(w-pw-4,L));Tp=Math.max(4,Math.min(hh-ph2-4,Tp));pn.style.left=L+'px';pn.style.top=Tp+'px';}
+    return;}
+  // enchufe seleccionado: sus dos cotas en cm y los botones de tipo
   const e=selEnc!=null&&f.enchufes?f.enchufes[selEnc]:null,uw=e&&encUW(e,f,ph);
   lay.querySelectorAll('[data-ek],#encChips').forEach(x=>{if(!uw||x.dataset.ei!==String(selEnc))x.remove();});
   if(!uw)return;
@@ -2497,6 +2549,9 @@ const A={
   ffCam(){pickPhoto('#fCam',{add:true,fr:route.f});},ffGal(){pickPhoto('#fGal',{add:true,fr:route.f});},
   ffPrev(){if(PHI>0){PHI--;VIEW={z:1,tx:0,ty:0};render();}},ffNext(){if(PHI<frPhotos(F()).length-1){PHI++;VIEW={z:1,tx:0,ty:0};render();}},
   ffOpen(){const ph=PH(),pi=PI();if(!ph)return;const back={...route};go({v:'foto',p:route.p,pi:route.pi,i:pi.fotos.indexOf(ph),back});},
+  descFoto(){const ph=PH();if(!ph||medNext(ph)||!medH(ph)){toast('Marca antes las 4 puntas del láser');return;}
+    descMode=!descMode;descSide=null;encAddMode=false;selEnc=null;if(!descMode&&route.v==='frente'){render();return;}
+    const b=document.querySelector('[data-act=descFoto]');if(b)b.classList.toggle('pri',descMode);medMsg();drawCanvas();},
   encAddFoto(d,b){const ph=PH();if(!ph||medNext(ph)||!medH(ph)){toast('Marca antes las 4 puntas del láser');return;}encAddMode=!encAddMode;selEnc=null;
     const eb=document.querySelector('[data-act=encAddFoto]');if(eb)eb.classList.toggle('pri',encAddMode);medMsg();drawCanvas();if(encAddMode)toast('Toca en la foto donde está el enchufe');},
   planUp(){const i=$('#fPlan');i.value='';i.click();},
