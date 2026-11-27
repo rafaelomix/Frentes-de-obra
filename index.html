@@ -900,18 +900,18 @@ document.addEventListener('change',e=>{if(e.target&&e.target.id==='incFotos'){in
 function renderPromo(app){
   const p=P();$('#ttl').textContent=p.title;
   const loc=p.loc||{};
-  app.innerHTML=`<div class="card"><div class="ttl"><b>${esc(p.title)}</b><button class="btn sm" data-act="renPromo">Renombrar</button></div></div>
-  <button class="btn pri full" data-act="newPiso" style="margin-bottom:12px">+ Añadir piso</button>
-  <div class="card">${foldHead('ploc','Ubicación de la obra')}<div class="${foldCls('ploc')}" data-foldc="ploc" style="margin-top:8px">
+  app.innerHTML=`<div class="card"><div class="ttl"><b>${esc(p.title)}</b><button class="btn sm" data-act="renPromo">Renombrar</button></div>
+  <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">${foldHead('ploc','📍 Ubicación de la obra'+(loc.txt?' · '+esc(loc.txt):''))}<div class="${foldCls('ploc')}" data-foldc="ploc" style="margin-top:8px">
    <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
-   <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div></div>
+   <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     const fph=(allPhotos(pi)[0]||{}).photo;
     return `<button class="item" data-act="openPiso" data-id="${pi.id}">${fph?`<img class="thumb" data-ph="${esc(JSON.stringify(fph))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Sin pisos todavía.</div>`)+
-  `<div class="card" style="margin-top:12px">${foldHead('pexp','Exportar')}<div class="${foldCls('pexp')}" data-foldc="pexp" style="margin-top:8px">
+  `<button class="btn pri full" data-act="newPiso" style="margin-top:4px">+ Añadir piso</button>
+  <div class="card" style="margin-top:12px">${foldHead('pexp','Exportar')}<div class="${foldCls('pexp')}" data-foldc="pexp" style="margin-top:8px">
    <div style="font-weight:600;margin:0 2px 6px">Todos los DXF de los pisos${qh('Un archivo DXF por cada piso, todos juntos.')}</div>
    <div class="grid2"><button class="btn pri" data-act="dxfAllPisos">⬇ Descargar</button>${mailBtn('dxfAllPisos')}</div>
    <div style="height:10px"></div>
