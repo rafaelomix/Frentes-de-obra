@@ -1629,6 +1629,11 @@ async function copForm(i){
 
 }}
   encDictUI('copete',CSTEPS);
+  // Medida de pared a la derecha de «Dictar con teclado»
+  {const kb=$('#edKb'),pw=[...$('#mbox').querySelectorAll('.fld')].find(x=>x.querySelector('[data-i="3"]'));
+    if(kb&&pw){const w=document.createElement('div');w.style.cssText='display:flex;gap:8px;align-items:center;flex:1 1 100%';kb.before(w);w.append(kb,pw);
+      kb.style.flex='none';pw.style.cssText='flex:1;min-width:0;margin:0';const lb=pw.querySelector('label');if(lb)lb.style.display='none';
+      const ip=pw.querySelector('input');if(ip)ip.placeholder='Pared (mm)';}}
   const r=await pr;encDictStop();
   if(!r.v)return;
   if(r.v==='del')f.copetes.splice(i,1);
@@ -1659,7 +1664,10 @@ async function encForm(i){
     const sm=bx=>{if(bx)bx.style.gap='5px';if(bx)bx.querySelectorAll('[data-v]').forEach(b=>{b.style.padding='12px 0';b.style.fontSize='13px';b.style.whiteSpace='nowrap';b.style.minWidth='0';});};
     if(sL)sm(bigChoice(sL,[['izq','⬅ Izq'],['dcha','Dcha ➡']]));
     if(sV)sm(bigChoice(sV,[['arriba','⬆ Encima'],['abajo','⬇ Debajo']]));
-    if(fl[0]&&fl[2]){const w=document.createElement('div');w.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:6px';fl[0].before(w);w.append(fl[0],fl[2]);}
+    // Horizontal + [Izq|Dcha] en una línea; Vertical + [Encima|Debajo] en la siguiente
+    if(fl[0]&&fl[1]&&fl[2]&&fl[3]){const row=(inp,ch)=>{const w=document.createElement('div');w.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:end';
+        const lb=ch.querySelector('label');if(lb)lb.style.display='none';ch.style.marginBottom=getComputedStyle(inp).marginBottom;return Object.assign(w,{_a:[inp,ch]});};
+      const r1=row(fl[1],fl[0]),r2=row(fl[3],fl[2]);fl[0].before(r1);r1.after(r2);r1.append(...r1._a);r2.append(...r2._a);}
     if(sT&&sD){bigChoice(sD,[['h','↔ Horizontal'],['v','↕ Vertical']]);
       sm(bigChoice(sT,[['1','Sencillo'],['2','Doble'],['3','Triple'],['4','Cuádruple']],v=>{fl[5].style.display=v==='1'?'none':'';}));}}
   encDictUI();
