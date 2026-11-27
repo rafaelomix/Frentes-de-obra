@@ -507,21 +507,30 @@ let fingerDraw=false;try{fingerDraw=localStorage.getItem('fc_fdraw')==='true';}c
 let drawTool='mover';          // mover | pen | goma | nota
 // Persianas: siempre recogidas al abrir un frente
 let FOLD={};
-const FOLD_OPEN={pieza:1,pfre:1,pfot:1};   // persianas abiertas por defecto
+const FOLD_OPEN={pieza:1,pfre:1,pfot:1,ffot:1};   // persianas abiertas por defecto
 const foldOff=k=>(k in FOLD)?!!FOLD[k]:!FOLD_OPEN[k];   // true = recogida
 // color propio de cada persiana
-const FOLDCOL={pfot:'#b45309',pnot:'#a16207',pfre:'#2563eb',cfg:'#475569',med:'#2563eb',enc:'#7c3aed',cop:'#0d9488',pieza:'#16a34a',ploc:'#dc2626',pexp:'#ea580c',pisoexp:'#ea580c',sync:'#0891b2',copia:'#64748b'};
+const FOLDCOL={pfot:'#b45309',ffot:'#b45309',pnot:'#a16207',pfre:'#2563eb',cfg:'#475569',med:'#2563eb',enc:'#7c3aed',cop:'#0d9488',pieza:'#16a34a',ploc:'#dc2626',pexp:'#ea580c',pisoexp:'#ea580c',sync:'#0891b2',copia:'#64748b'};
 function foldHead(k,title){const c=FOLDCOL[k]||'#374151';return `<button type="button" class="fold ${foldOff(k)?'closed':''}" data-fold="${k}" style="color:${c};border-left:5px solid ${c};padding-left:10px;margin-left:-4px"><span>${title}</span><span class="chev2" style="color:${c}">▾</span></button>`;}
 function foldCls(k){return 'foldc'+(foldOff(k)?' closed':'');}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const k=b.dataset.fold;FOLD[k]=!foldOff(k);
   b.classList.toggle('closed',foldOff(k));const c=document.querySelector('[data-foldc="'+k+'"]');if(c)c.classList.toggle('closed',foldOff(k));
+  if(k==='ffot'&&!foldOff(k)&&typeof drawCanvas==='function')setTimeout(drawCanvas,0);
   if((k==='enc'||k==='cop')&&typeof A!=='undefined'){const h=$(k==='enc'?'#encHost':'#copHost');
     if(!foldOff(k))(k==='enc'?A.addEnc:A.addCop)();else if(h&&h.querySelector('#mbox')){encDictStop&&encDictStop();unInline();}}});
 let VIEW={z:1,tx:0,ty:0};      // zoom de la foto (dos dedos)
 const UNDO={id:null,st:[]};    // deshacer: dibujo, cotas y cruce del láser
 // Las fotos van en el piso: pi.fotos[] = {id,photo,draw,notes}
 let PHI=0;
-function PH(){if(route.v!=='foto')return null;const pi=PI();return (pi&&pi.fotos&&pi.fotos[route.i])||null;}
+function PH(){const pi=PI();if(!pi)return null;
+  if(route.v==='foto')return (pi.fotos&&pi.fotos[route.i])||null;
+  if(route.v==='frente'){const l=frPhotos(F());if(!l.length)return null;if(PHI>=l.length)PHI=l.length-1;return l[Math.max(0,PHI)];}
+  return null;}
+// Fotos asignadas a un frente (ph.fr = id del frente); las demás son fotos generales del piso
+function frPhotos(f){const pi=PI();return f&&pi?(pi.fotos||[]).filter(x=>x.fr===f.id&&x.photo):[];}
+function frOf(ph){const pi=PI();return ph&&ph.fr&&pi?pi.frentes.find(f=>f.id===ph.fr)||null:null;}
+// Medidas sobre la foto activas: en el frente siempre; en la foto a pantalla completa con 📐
+function medOn(){return route.v==='frente'||(route.v==='foto'&&drawTool==='med');}
 function allPh(f){return [f,...(f.fotos||[])].filter(x=>x&&x.photo);}   // fotos antiguas guardadas en el frente
 // Todas las fotos de un piso (las del piso y, si quedara alguna, las antiguas de sus frentes)
 function allPhotos(pi){return [...(pi.fotos||[]).filter(x=>x&&x.photo),...(pi.frentes||[]).flatMap(allPh)];}
@@ -529,6 +538,7 @@ function allPhotos(pi){return [...(pi.fotos||[]).filter(x=>x&&x.photo),...(pi.fr
 function migrateData(){
   for(const p of (S.promos||[])){let ch=false;
     for(const pi of (p.pisos||[])){if(!pi.fotos){pi.fotos=[];ch=true;}if(!pi.copetes){pi.copetes=[];ch=true;}
+      for(const x of pi.fotos)if(x.fr===undefined&&x.med&&x.med.f){x.fr=x.med.f;ch=true;}
       for(const f of (pi.frentes||[])){
         for(const ph of allPh(f)){const k=JSON.stringify(ph.photo);if(!pi.fotos.some(x=>JSON.stringify(x.photo)===k))pi.fotos.push({id:uid(),photo:ph.photo,draw:ph.draw||[],notes:ph.notes||[]});ch=true;}
         if(f.photo!==undefined||f.fotos!==undefined||f.draw!==undefined||Array.isArray(f.notes)){delete f.photo;delete f.fotos;delete f.draw;if(Array.isArray(f.notes))delete f.notes;ch=true;}
@@ -538,7 +548,7 @@ function migrateData(){
       }}
     if(ch&&typeof Store!=='undefined'&&Store.save)Store.save(p);}
 }
-function undoKey(){return route.v==='foto'?route.pi+':'+route.i:null;}
+function undoKey(){const ph=PH();return ph?route.pi+':'+(ph.id||route.i):null;}
 function undoPush(){const ph=PH();if(!ph)return;const k=undoKey();if(UNDO.id!==k){UNDO.id=k;UNDO.st=[];}
   UNDO.st.push(JSON.stringify({draw:ph.draw||[],notes:ph.notes||[]}));if(UNDO.st.length>60)UNDO.st.shift();}
 function undoRestore(o){const ph=PH();ph.draw=o.draw;if(o.notes)ph.notes=o.notes;}
@@ -874,6 +884,7 @@ function render(){
   if(route.v==='foto')return renderFoto(app);
 }
 $('#back').onclick=()=>{
+  if(route.v==='foto'&&route.back){const b=route.back;go(b);return;}
   if(route.v==='frente'||route.v==='foto')go({v:'piso',p:route.p,pi:route.pi});
   else if(route.v==='piso')go({v:'promo',p:route.p});
   else go({v:'home'});
@@ -933,7 +944,7 @@ function renderPiso(app){
   const fotos=pi.fotos||[],cps=pi.copetes||[];
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
   <div class="card">${foldHead('pfot','Fotos'+(fotos.length?' ('+fotos.length+')':''))}<div class="${foldCls('pfot')}" data-foldc="pfot" style="margin-top:8px">
-   ${fotos.length?`<div class="phgrid">${fotos.map((x,i)=>`<button class="phcell" data-act="openFoto" data-i="${i}"><img data-ph="${esc(JSON.stringify(x.photo))}" alt=""><span>${i+1}${(x.draw&&x.draw.length)||(x.notes&&x.notes.length)?' ✏':''}</span></button>`).join('')}</div>`:''}
+   ${fotos.length?`<div class="phgrid">${fotos.map((x,i)=>`<button class="phcell" data-act="openFoto" data-i="${i}"><img data-ph="${esc(JSON.stringify(x.photo))}" alt=""><span>${i+1}${(x.draw&&x.draw.length)||(x.notes&&x.notes.length)?' ✏':''}${(()=>{const fr=pi.frentes.find(f=>f.id===x.fr);return fr?' · '+esc(fr.name||'Frente'):'';})()}</span></button>`).join('')}</div>`:''}
    <div class="grid2"><button class="btn" data-act="pfCam">📷 Hacer foto</button><button class="btn" data-act="pfGal">🖼 Galería</button></div></div></div>
   <div class="card">${foldHead('pnot','Notas'+((pi.nota||'').trim()?' ✏':''))}<div class="${foldCls('pnot')}" data-foldc="pnot" style="margin-top:8px"><textarea class="in" id="piNota" rows="3" placeholder="Notas de este piso…" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit">${esc(pi.nota||'')}</textarea></div></div>
   <div class="card">${foldHead('pfre','Frentes'+(pi.frentes.length?' ('+pi.frentes.length+')':''))}<div class="${foldCls('pfre')}" data-foldc="pfre" style="margin-top:8px">`+
@@ -956,7 +967,7 @@ function renderPiso(app){
 function renderFoto(app){
   const p=P(),pi=PI(),i=route.i,ph=PH(),n=(pi.fotos||[]).length;
   $('#ttl').textContent=pi.title+' · foto '+(i+1);
-  app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>Foto ${i+1} de ${n}</b><span style="display:flex;gap:6px"><button class="btn sm" data-act="fotoPrev" ${i>0?'':'disabled'}>‹</button><button class="btn sm" data-act="fotoNext" ${i<n-1?'':'disabled'}>›</button></span></div></div>
+  app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>Foto ${i+1} de ${n}</b><span style="display:flex;gap:6px"><button class="btn sm" data-act="fotoPrev" ${i>0?'':'disabled'}>‹</button><button class="btn sm" data-act="fotoNext" ${i<n-1?'':'disabled'}>›</button></span></div><div style="margin-top:8px">${frSel(ph)}</div></div>
   <div><div class="dtools"><button class="btn sm ${drawTool==='mover'?'on':''}" data-act="dmover">✋ Mover</button>${['#ef4444','#facc15','#2563eb','#16a34a','#111827','#ffffff'].map(c=>`<button class="sw ${c===drawColor&&drawTool==='pen'?'on':''}" style="background:${c}" data-act="dcol" data-c="${c}" aria-label="color"></button>`).join('')}
      <button class="btn sm ${drawTool==='goma'?'on':''}" data-act="dgoma">🧽 Goma</button>
      <button class="btn sm ${drawTool==='nota'?'on':''}" data-act="dnota">📝 Nota</button>
@@ -967,8 +978,9 @@ function renderFoto(app){
   <div class="grid2" style="margin-top:10px"><button class="btn" data-act="photoCam">📷 Cambiar foto</button><button class="btn" data-act="photoGal">🖼 Cambiar (galería)</button></div>
   <div class="grid2" style="margin-top:8px"><button class="btn" data-act="photoJpg">⬇ Guardar foto anotada</button><button class="btn dang" data-act="phDel">Quitar foto</button></div>`;
   setupCanvas();
-  const mf=$('#medFr');if(mf)mf.onchange=()=>{const pi=PI(),ph=PH();if(!ph||!ph.med)return;
-    if(mf.value==='__new'){const f=mkFrente(pi);ph.med.f=f.id;}else ph.med.f=mf.value;
+  const mf=$('#phFr');if(mf)mf.onchange=()=>{const pi=PI(),ph=PH();if(!ph)return;
+    if(mf.value==='__new'){const f=mkFrente(pi);ph.fr=f.id;}else ph.fr=mf.value||null;
+    if(!ph.fr&&drawTool==='med')drawTool='mover';
     Store.save(P());render();};
   medMsg();
 }
@@ -988,6 +1000,12 @@ function renderFrente(app){
   $('#ttl').textContent=pi.title+' · '+name;
   const inp=k=>`<label><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PAIRC[k]};margin-right:4px"></span>${esc(KSHORT[k])}<span style="display:flex;align-items:center;gap:5px"><input style="border-left:6px solid ${PAIRC[k]}" class="in ${num(f.m[k])==null?'miss':''}" inputmode="decimal" data-k="${k}" value="${esc(f.m[k]==null?'':f.m[k])}" placeholder="mm"><span style="display:flex;flex-direction:column;align-items:center;gap:2px"><span class="ordn" data-ord="${k}">${ordBadge(k)}</span><button type="button" class="cpb" data-cp="${k}" title="Calcar de ${esc(KLAB[PAIRK[k]])}">${/^(lt|lb|rt|rb)$/.test(k)?'⇅':'⇄'}</button></span></span></label>`;
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)} · ${esc(pi.title)}</div><div class="ttl"><b>${esc(name)}</b><button class="btn sm" data-act="renFrente">Renombrar</button></div></div>`+
+  (()=>{const l=frPhotos(f),ph=PH();return `<div class="card">${foldHead('ffot','Fotos'+(l.length?' ('+l.length+')':''))}<div class="${foldCls('ffot')}" data-foldc="ffot" style="margin-top:8px">
+    ${ph?`${l.length>1?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><button class="btn sm" data-act="ffPrev" ${PHI>0?'':'disabled'}>‹</button><span class="note" style="flex:1;text-align:center">Foto ${PHI+1} de ${l.length}</span><button class="btn sm" data-act="ffNext" ${PHI<l.length-1?'':'disabled'}>›</button></div>`:''}
+      ${medBar()}<div class="cvwrap"><canvas id="cv"></canvas><div id="medLay"></div></div>
+      ${VIEW.z>1.01?'<button class="btn sm full" data-act="zoomReset" style="margin-bottom:8px">🔍 Ver foto entera</button>':''}
+      <div style="display:flex;gap:6px"><button class="btn sm" data-act="ffOpen" style="flex:1">⛶ Abrir para dibujar</button><button class="btn sm" data-act="ffCam">📷</button><button class="btn sm" data-act="ffGal">🖼</button></div>`
+     :`<div class="grid2"><button class="btn" data-act="ffCam">📷 Hacer foto</button><button class="btn" data-act="ffGal">🖼 Galería</button></div>`}</div></div>`;})()+
   `<div class="card">${foldHead('med','Medidas desde el láser (mm)')}<div class="${foldCls('med')}" data-foldc="med" style="margin-top:4px"><div class="qhrow">${qh('Cómo medir: láser en cruz sobre la encimera. Desde la línea vertical se mide a la pared izquierda y derecha, arriba y abajo. Desde la horizontal, a cada lado, hasta el techo (o mueble alto) y hasta el mueble de abajo. Todo en mm. Las casillas del mismo color son pareja: el botón ⇅ / ⇄ calca la medida de su pareja.')}</div>
    <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn sm pri" data-act="dictStart" style="flex:1 1 60%">🎤 Dictar medidas</button><button class="btn sm" data-act="kbStart" style="flex:1 1 30%">⌨ Dictar con teclado</button><button class="btn sm" data-act="orderEdit">⚙ Orden</button>
      <label class="note" style="display:flex;align-items:center;gap:6px">en <select class="in" id="dictUnit" style="width:auto;padding:6px 8px;font-size:15px"><option value="obra" ${dictUnit==='obra'?'selected':''}>m y cm</option><option value="cm" ${dictUnit==='cm'?'selected':''}>cm</option><option value="mm" ${dictUnit==='mm'?'selected':''}>mm</option></select></label>
@@ -1049,6 +1067,7 @@ function renderFrente(app){
   app.querySelectorAll('[data-fcut]').forEach(i=>i.oninput=()=>{const f=F(),p=P();if(!f||!p)return;const v=num(i.value);if(v!=null){ownCfg(f).cuts[i.dataset.fcut]=v;Store.save(p);renderPrev();}});
   app.querySelectorAll('[data-fset]').forEach(i=>i.oninput=()=>{const f=F(),p=P();if(!f||!p)return;const v=num(i.value);if(v!=null&&v>0){ownCfg(f)[i.dataset.fset]=v;Store.save(p);renderPrev();}});
   renderPrev();
+  if($('#cv')){drawTool='med';setupCanvas();medMsg();}
   if(Dict)dictBanner();
   lzUI();
   setTimeout(()=>{if(route.v!=='frente'||inlineOpen)return;if(!foldOff('enc'))A.addEnc();},0);
@@ -1139,7 +1158,7 @@ function drawAnnot(ctx,img,W,H,f,collect,view){
   ctx.drawImage(img,0,0,W,H);
   const u=annUnit(W,H,view),lw=LINE_CSS*u;
   for(const st of (f.draw||[]))strokePath(ctx,st,W,H,lw);
-  if(view&&f.med&&drawTool==='med'&&route.v==='foto')drawMed(ctx,W,H,f,u);
+  if(view&&f.med&&medOn())drawMed(ctx,W,H,f,u);
   const out=[];
   ctx.save();
   (f.notes||[]).forEach((n,i)=>{
@@ -1203,8 +1222,8 @@ async function setupCanvas(){
       if(touches.size>2)return;
       if(mode==='draw'&&drawTool!=='nota'&&drawTool!=='med'&&!fingerDraw){if(VIEW.z>1){pan={p0:wrapPt(e),tx0:VIEW.tx,ty0:VIEW.ty};try{cv.setPointerCapture(e.pointerId);}catch(_){}}return;}   // dibujar y borrar: solo con el Apple Pencil
     }
-    if(mode==='draw'&&drawTool==='med'){const ph=PH();if(!ph||!ph.med)return;const pt=pos(e),nk=medNext(ph);
-      if(nk){medTap={k:nk,q:[pt[0]/cv.width,pt[1]/cv.height]};return;}
+    if(mode==='draw'&&drawTool==='med'){const ph=PH();if(!ph||!frOf(ph))return;ph.med=ph.med||{pts:{}};ph.med.pts=ph.med.pts||{};const pt=pos(e),nk=medNext(ph);
+      if(nk){medTap={k:nk,q:[pt[0]/cv.width,pt[1]/cv.height],c:[e.clientX,e.clientY]};return;}
       const ps=ph.med.pts,tol=26*U();let best=null,bd=1e9;
       for(const k in ps){const d=Math.hypot(ps[k][0]*cv.width-pt[0],ps[k][1]*cv.height-pt[1]);if(d<tol&&d<bd){bd=d;best=k;}}
       if(best){mdrag=best;try{cv.setPointerCapture(e.pointerId);}catch(_){}return;}
@@ -1244,6 +1263,7 @@ async function setupCanvas(){
       if(pinch.z0<=1.01&&!pinch.zooming&&Math.abs(d/pinch.d0-1)<0.12){const cc=[...ctouch.values()],cy=(cc[0][1]+cc[1][1])/2;window.scrollBy(0,pinch.cy-cy);pinch.cy=cy;return;}
       pinch.zooming=true;const cx=(pinch.m0[0]-pinch.tx0)/pinch.z0,cy=(pinch.m0[1]-pinch.ty0)/pinch.z0;
       VIEW={z,tx:m[0]-cx*z,ty:m[1]-cy*z};applyView();return;}
+    if(medTap&&medTap.c&&Math.hypot(e.clientX-medTap.c[0],e.clientY-medTap.c[1])>12)medTap=null;
     if(mdrag){const pt=pos(e),ph=PH();ph.med.pts[mdrag]=[Math.min(1,Math.max(0,pt[0]/cv.width)),Math.min(1,Math.max(0,pt[1]/cv.height))];drawCanvas();return;}
     if(pan){const p=wrapPt(e);VIEW.tx=pan.tx0+p[0]-pan.p0[0];VIEW.ty=pan.ty0+p[1]-pan.p0[1];applyView();return;}
     if(drag&&mode==='laser'){setCross(pos(e));return;}
@@ -1262,6 +1282,7 @@ async function setupCanvas(){
     }
   };
   cv.onpointerup=cv.onpointercancel=e=>{
+    if(e.type==='pointercancel')medTap=null;
     const wasPinch=!!pinch;
     if(touches.has(e.pointerId)){touches.delete(e.pointerId);ctouch.delete(e.pointerId);if(touches.size<2&&pinch){const zoomed=VIEW.z>1.01;pinch=null;if(zoomed||$('[data-act=zoomReset]'))render();return;}}
     if(pan){pan=null;return;}
@@ -1283,7 +1304,7 @@ const MUV={l:[-1,0],r:[1,0],t:[0,1],b:[0,-1]};
 // flecha de cada medida (desde el rayo hasta la pared) y sitio de su casilla, en el plano del frente (u: izq−/dcha+, v: abajo−/arriba+)
 const MARR={lt:[[0,.55],[-1,.55],[-.45,.55]],lb:[[0,-.55],[-1,-.55],[-.45,-.55]],rt:[[0,.55],[1,.55],[.45,.55]],rb:[[0,-.55],[1,-.55],[.45,-.55]],
   ul:[[-.8,0],[-.8,1],[-.8,.8]],dl:[[-.8,0],[-.8,-1],[-.8,-.8]],ur:[[.8,0],[.8,1],[.8,.8]],dr:[[.8,0],[.8,-1],[.8,-.8]]};
-function medNext(ph){const p=(ph&&ph.med&&ph.med.pts)||{};const s=MSTEPS.find(([k])=>!p[k]);return s?s[0]:null;}
+function medNext(ph){const p=(ph&&ph.med&&ph.med.pts)||{};if(ph&&!frOf(ph))return null;const s=MSTEPS.find(([k])=>!p[k]);return s?s[0]:null;}
 // Colocación: el cruce C es donde se cortan las dos líneas del láser. Cada cuadrante usa sus dos semirrayos
 // (C→pared izq/dcha y C→techo/mueble), así las cotas siguen la inclinación real de las líneas de la foto.
 function medH(ph){const p=ph&&ph.med&&ph.med.pts;if(!p||medNext(ph))return null;
@@ -1300,9 +1321,9 @@ function linSolve(A,b){const n=b.length,M=A.map((r,i)=>[...r,b[i]]);
     for(let r=0;r<n;r++){if(r===c)continue;const f=M[r][c]/M[c][c];for(let k=c;k<=n;k++)M[r][k]-=f*M[c][k];}}
   return M.map((r,i)=>r[n]/r[i]);}
 function mkFrente(pi){const f={id:uid(),name:'Frente '+(pi.frentes.length+1),cx:.5,cy:.55,m:{},enchufes:[]};pi.frentes.push(f);Store.save(P());return f;}
-function medF(){const ph=PH(),pi=PI();if(!ph||!ph.med||!pi)return null;return pi.frentes.find(f=>f.id===ph.med.f)||null;}
-function medBar(){const pi=PI(),ph=PH(),m=(ph&&ph.med)||{};
-  return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><select class="in" id="medFr" style="flex:1;min-width:0;font-size:16px;padding:8px">${pi.frentes.map((f,i)=>`<option value="${f.id}" ${f.id===m.f?'selected':''}>${esc(f.name||'Frente '+(i+1))}</option>`).join('')}<option value="__new">+ Nuevo frente</option></select><button class="btn sm" data-act="medReset">↺ Recolocar láser</button></div><div class="note" id="medMsg" style="margin:0 2px 6px;font-weight:600"></div>`;}
+function medF(){return frOf(PH());}
+function medBar(){return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><div class="note grow" id="medMsg" style="font-weight:600;flex:1"></div><button class="btn sm" data-act="medReset" style="flex:none">↺ Recolocar láser</button></div>`;}
+function frSel(ph){const pi=PI();return `<label class="note" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">Frente<select class="in" id="phFr" style="flex:1;min-width:0;font-size:16px;padding:8px"><option value="">— Ninguno (foto general) —</option>${pi.frentes.map((f,i)=>`<option value="${f.id}" ${ph&&f.id===ph.fr?'selected':''}>${esc(f.name||'Frente '+(i+1))}</option>`).join('')}<option value="__new">+ Nuevo frente</option></select></label>`;}
 function medMsg(){const el=$('#medMsg');if(!el)return;const ph=PH(),k=medNext(ph);
   el.style.color=k?'#c2410c':'';el.textContent=k?(MSTEPS.findIndex(x=>x[0]===k)+1)+'/4 · '+MSTEPS.find(x=>x[0]===k)[1]+'.':'Escribe cada medida en su casilla (con el lápiz o el teclado). Arrastra los puntos para ajustar la cruz.';}
 // Dibujo de la cruz y las flechas (solo en pantalla, no sale en la foto exportada)
@@ -1320,13 +1341,14 @@ function drawMed(ctx,W,H,ph,u){
 }
 // Casillas sobre la foto, colocadas con la perspectiva
 function placeMedInputs(){
-  const lay=$('#medLay'),cv=$('#cv');if(!lay||!cv)return;const ph=PH(),h=(drawTool==='med'&&route.v==='foto')?medH(ph):null,f=h&&medF();
+  const lay=$('#medLay'),cv=$('#cv');if(!lay||!cv)return;const ph=PH(),h=medOn()?medH(ph):null,f=h&&medF();
   if(!h||!f){lay.innerHTML='';return;}
   const w=cv.clientWidth,hh=cv.clientHeight;
   for(const k of KEYS){let ip=lay.querySelector(`[data-mk="${k}"]`);
     if(!ip){ip=document.createElement('input');ip.dataset.mk=k;ip.className='in';ip.setAttribute('inputmode','decimal');ip.setAttribute('autocomplete','off');ip.placeholder={ul:'Techo',ur:'Techo',dl:'Mueble',dr:'Mueble',lt:'Pared',lb:'Pared',rt:'Pared',rb:'Pared'}[k];
       ip.style.border='3px solid '+PAIRC[k];
-      ip.oninput=()=>{const f=medF(),p=P();if(!f||!p)return;f.m=f.m||{};const v=ip.value.trim().replace(/\s+/g,'');f.m[k]=v===''?null:v;Store.save(p);};
+      ip.oninput=()=>{const f=medF(),p=P();if(!f||!p)return;f.m=f.m||{};const v=ip.value.trim().replace(/\s+/g,'');f.m[k]=v===''?null:v;Store.save(p);
+        if(route.v==='frente'&&F()===f){const o=document.querySelector(`input[data-k="${k}"]`);if(o){o.value=v;o.classList.toggle('miss',num(v)==null);}renderPrev();}};
       lay.appendChild(ip);}
     if(document.activeElement!==ip){const v=f.m&&f.m[k];ip.value=v==null?'':v;}
     const q=h(MARR[k][2][0],MARR[k][2][1]),x=q[0]*w*VIEW.z+VIEW.tx,y=q[1]*hh*VIEW.z+VIEW.ty;
@@ -2116,10 +2138,13 @@ const A={
   dfinger(){fingerDraw=!fingerDraw;LS.set('fc_fdraw',fingerDraw);toast(fingerDraw?'Ahora también dibuja el dedo':'Solo dibuja el Apple Pencil');render();},
   dmover(){drawTool='mover';render();},
   dnota(){drawTool=drawTool==='nota'?'pen':'nota';render();},
-  dmed(){if(drawTool==='med'){drawTool='mover';render();return;}const pi=PI(),ph=PH();if(!ph)return;
-    if(!ph.med){const f=pi.frentes[0]||mkFrente(pi);ph.med={f:f.id,pts:{}};Store.save(P());}
-    else if(!medF()){ph.med.f=(pi.frentes[0]||mkFrente(pi)).id;Store.save(P());}
+  dmed(){if(drawTool==='med'){drawTool='mover';render();return;}const ph=PH();if(!ph)return;
+    if(!frOf(ph)){toast('Asigna antes la foto a un frente (arriba)');const s=$('#phFr');if(s)s.focus();return;}
+    if(!ph.med){ph.med={pts:{}};Store.save(P());}
     drawTool='med';render();},
+  ffCam(){pickPhoto('#fCam',{add:true,fr:route.f});},ffGal(){pickPhoto('#fGal',{add:true,fr:route.f});},
+  ffPrev(){if(PHI>0){PHI--;VIEW={z:1,tx:0,ty:0};render();}},ffNext(){if(PHI<frPhotos(F()).length-1){PHI++;VIEW={z:1,tx:0,ty:0};render();}},
+  ffOpen(){const ph=PH(),pi=PI();if(!ph)return;const back={...route};go({v:'foto',p:route.p,pi:route.pi,i:pi.fotos.indexOf(ph),back});},
   medReset(){const ph=PH();if(ph&&ph.med){ph.med.pts={};Store.save(P());render();}},
   dgoma(){drawTool=drawTool==='goma'?'pen':'goma';render();},
   cotasReset(){const f=F();undoPush();f.cp={};Store.save(P());drawCanvas();},
@@ -2173,8 +2198,10 @@ async function onPhoto(e){
     const pi=PI();
     if(pi&&pi.id===photoTarget.pi){pi.fotos=pi.fotos||[];
       if(photoTarget.rep!=null&&pi.fotos[photoTarget.rep]){pi.fotos[photoTarget.rep].photo=ref;VIEW={z:1,tx:0,ty:0};Store.save(P());render();}
-      else{pi.fotos.push({id:uid(),photo:ref,draw:[],notes:[]});Store.save(P());
-        if(route.v==='piso'){FOLD.pfot=false;render();}else render();}}
+      else{pi.fotos.push({id:uid(),photo:ref,draw:[],notes:[],fr:photoTarget.fr||null});Store.save(P());
+        if(route.v==='piso'){FOLD.pfot=false;render();}
+        else if(route.v==='frente'){PHI=frPhotos(F()).length-1;VIEW={z:1,tx:0,ty:0};FOLD.ffot=false;render();}
+        else render();}}
     toast('Foto guardada');
   }catch(err){console.error(err);toast('No se pudo leer la foto');}
   photoTarget=null;
