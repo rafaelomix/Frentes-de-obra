@@ -934,7 +934,7 @@ function renderPromo(app){
   const p=P();$('#ttl').textContent=p.title;
   const loc=p.loc||{};
   app.innerHTML=`<div class="card"><div class="ttl"><b>${esc(p.title)}</b><button class="btn sm" data-act="renPromo">Renombrar</button></div>
-  <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">${foldHead('ploc','Detalles'+(loc.txt?' · 📍 '+esc(loc.txt):'')+((p.planos||[]).length?' · 📐 '+p.planos.length:''))}<div class="${foldCls('ploc')}" data-foldc="ploc" style="margin-top:8px">
+  <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">${foldHead('ploc','Detalles'+((p.planos||[]).length?' · 📐 '+p.planos.length:''))}<div class="${foldCls('ploc')}" data-foldc="ploc" style="margin-top:8px">
    <div style="font-weight:600;margin:2px 2px 6px">📍 Ubicación de la obra</div>
    <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
