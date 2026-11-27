@@ -2465,7 +2465,10 @@ const A={
   photoCam(){pickPhoto('#fCam',{rep:route.i});},photoGal(){pickPhoto('#fGal',{rep:route.i});},
   pfCam(){pickPhoto('#fCam',{add:true});},
   pfNewFr(){pickPhoto('#fCam',{add:true,newFr:true});},pfGal(){pickPhoto('#fGal',{add:true});},
-  openFoto(d){go({v:'foto',p:route.p,pi:route.pi,i:+d.i});},
+  // foto de un frente: se abre dentro del frente (con sus medidas, enchufes, etc. debajo); las generales, a pantalla completa
+  openFoto(d){const pi=PI(),ph=pi.fotos[+d.i],fr=frOf(ph);
+    if(fr){const k=frPhotos(fr).indexOf(ph);go({v:'frente',p:route.p,pi:route.pi,f:fr.id});if(k>0){PHI=k;render();}return;}
+    go({v:'foto',p:route.p,pi:route.pi,i:+d.i});},
   fotoPrev(){if(route.i>0)go({...route,i:route.i-1});},fotoNext(){if(route.i<(PI().fotos||[]).length-1)go({...route,i:route.i+1});},
   async phDel(){const pi=PI();if(!await confirmDel('la foto '+(route.i+1)+' (con su dibujo y notas)'))return;
     pi.fotos.splice(route.i,1);UNDO.id=null;Store.save(P());go({v:'piso',p:route.p,pi:route.pi});},
