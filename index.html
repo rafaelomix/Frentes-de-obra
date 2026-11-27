@@ -1379,7 +1379,7 @@ function medF(){return frOf(PH());}
 function medBar(){return `<div class="note" id="medMsg" style="font-weight:600;margin:0 2px 6px"></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button class="btn sm ${encAddMode?'pri':''}" data-act="encAddFoto">🔌 Enchufe</button><button class="btn sm ${descMode?'pri':''}" data-act="descFoto">✂ Descuentos</button><button class="btn sm" data-act="medReset" style="margin-left:auto">↺ Marcar de nuevo</button></div>`;}
 function frSel(ph){const pi=PI();return `<label class="note" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">Frente<select class="in" id="phFr" style="flex:1;min-width:0;font-size:16px;padding:8px"><option value="">— Ninguno (foto general) —</option>${pi.frentes.map((f,i)=>`<option value="${f.id}" ${ph&&f.id===ph.fr?'selected':''}>${esc(f.name||'Frente '+(i+1))}</option>`).join('')}<option value="__new">+ Nuevo frente</option></select></label>`;}
 function medMsg(){const el=$('#medMsg');if(!el)return;const k=medNext(PH());el.style.color=k?'#c2410c':'';
-  el.textContent=k?(MSTEPS.findIndex(x=>x[0]===k)+1)+'/4 · '+MSTEPS.find(x=>x[0]===k)[1]+'.':(descMode?'Toca un lado para cambiar su descuento, esquina o visto. La línea naranja discontinua es la pieza final.':encAddMode?'Toca en la foto donde está el enchufe.':'Escribe cada medida en cm en su casilla (p. ej. 223,5); en Medidas se guarda en mm. Toca un enchufe para ver sus cotas.')+' Si hace falta, arrastra las esquinas o el punto rojo (cruce).';}
+  el.textContent=k?(MSTEPS.findIndex(x=>x[0]===k)+1)+'/4 · '+MSTEPS.find(x=>x[0]===k)[1]+'.':(descMode?'Medidas y descuentos a la vez: toca un lado para cambiar su descuento, esquina o visto. La línea naranja discontinua es la pieza final.':encAddMode?'Toca en la foto donde está el enchufe.':'Escribe cada medida en cm en su casilla (p. ej. 223,5); en Medidas se guarda en mm. Toca un enchufe para ver sus cotas.')+' Si hace falta, arrastra las esquinas o el punto rojo (cruce).';}
 // Dibujo del rectángulo, la cruz y las flechas (solo en pantalla, no sale en la foto exportada)
 function drawMed(ctx,W,H,ph,u,stat){
   if(medNext(ph)){if(stat)return;const p=(ph.med&&ph.med.pts)||{};ctx.save();
@@ -1479,7 +1479,7 @@ function placeMedInputs(){
     if(document.activeElement!==ip){const v=num(f.m&&f.m[k]);ip.value=v==null?'':fmt(v/10);}   // en la foto, en cm
     const q=h(...medLayout(ph.med.c)[k][2]),x=q[0]*w*VIEW.z+VIEW.tx,y=q[1]*hh*VIEW.z+VIEW.ty;
     ip.style.left=(x-35)+'px';ip.style.top=(y-17)+'px';ip.style.display=(x<-30||y<-20||x>w+30||y>hh+20)?'none':'';
-    ip.style.opacity=selEnc!=null?'.3':'';if(descMode)ip.style.display='none';}   // con un enchufe elegido, las medidas quedan atenuadas
+    ip.style.opacity=selEnc!=null?'.3':'';}   // con un enchufe elegido, las medidas quedan atenuadas
   const toS=q=>[q[0]*w*VIEW.z+VIEW.tx,q[1]*hh*VIEW.z+VIEW.ty];
   // modo descuentos: una etiqueta por lado y el panel del lado elegido
   lay.querySelectorAll('[data-desc],#descPanel').forEach(x=>{if(!descMode)x.remove();});
