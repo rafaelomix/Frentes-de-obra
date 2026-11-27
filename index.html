@@ -515,7 +515,7 @@ let fingerDraw=false;try{fingerDraw=localStorage.getItem('fc_fdraw')==='true';}c
 let drawTool='mover';          // mover | pen | goma | nota
 // Persianas: siempre recogidas al abrir un frente
 let FOLD={};
-const FOLD_OPEN={pieza:1,pfre:1,pfot:1,ffot:1};   // persianas abiertas por defecto
+const FOLD_OPEN={pieza:1,pfot:1,ffot:1};   // persianas abiertas por defecto
 const foldOff=k=>(k in FOLD)?!!FOLD[k]:!FOLD_OPEN[k];   // true = recogida
 // color propio de cada persiana
 const FOLDCOL={plano:'#0f766e',pfot:'#b45309',ffot:'#b45309',pnot:'#a16207',pfre:'#2563eb',cfg:'#475569',med:'#2563eb',enc:'#7c3aed',cop:'#0d9488',pieza:'#16a34a',ploc:'#dc2626',pexp:'#ea580c',pisoexp:'#ea580c',sync:'#0891b2',copia:'#64748b'};
