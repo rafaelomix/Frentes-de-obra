@@ -223,7 +223,8 @@ function esqOf(f){const e=(f&&f.esq)||{};return{l:num(String(e.l||'').replace('�
 function vistoOf(f){const v=(f&&f.visto)||{};return{l:!!v.l,r:!!v.r};}
 function cfgOf(p,f){
   const c=(f&&f.cfg)?{cuts:f.cfg.cuts,dia:num(f.cfg.dia)||68,sep:num(f.cfg.sep)||70}:{cuts:p.cuts,dia:num(p.dia)||68,sep:num(p.sep)||70};
-  const e=esqOf(f);if(e.l||e.r)c.cuts={...c.cuts,l:c.cuts.l-e.l,r:c.cuts.r-e.r};
+  // Con encuentro de esquina, el descuento de ese lado es 0 y solo cuenta la esquina
+  const e=esqOf(f);if(e.l||e.r)c.cuts={...c.cuts,...(e.l?{l:-e.l}:{}),...(e.r?{r:-e.r}:{})};
   const vi=vistoOf(f);if(vi.l||vi.r)c.cuts={...c.cuts,...(vi.l?{l:0}:{}),...(vi.r?{r:0}:{})};
   return c;
 }
@@ -986,10 +987,10 @@ function renderFrente(app){
    <div class="row" style="margin-bottom:4px"><button class="btn sm" id="lzBtn" data-act="lzCon" style="flex:1">📏 Conectar láser</button><button class="btn sm pri" id="lzMed" data-act="lzMed" style="display:none">Medir</button></div>
    <div class="note" id="lzSt" style="margin-bottom:10px">${Laser.conectado()?'Láser conectado. Toca una casilla (o una cifra de la foto) para elegir dónde cae la siguiente medida.':''}</div>
    <div class="mg"><div class="col">${['ul','lt','lb','dl'].map(inp).join('')}</div><div>${crossSVG()}</div><div class="col">${['ur','rt','rb','dr'].map(inp).join('')}</div></div>
-   <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><div style="display:flex;align-items:center;font-weight:600;margin-bottom:8px">Descuentos y esquinas${f.cfg?' <span class="note" style="font-weight:400;margin-left:6px">(propios)</span>':''}${qh('Operaciones sobre la pieza completa. Descuento: mm que se quitan en cada lado. Esquina: encuentro con otro frente (+14 alarga la pieza por ese lado; −14 la acorta); se suma al descuento. Visto: ese lado queda a la vista; descuento 0 y en el DXF lleva línea de canto visto.')}</div>
+   <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)"><div style="display:flex;align-items:center;font-weight:600;margin-bottom:8px">Descuentos y esquinas${f.cfg?' <span class="note" style="font-weight:400;margin-left:6px">(propios)</span>':''}${qh('Operaciones sobre la pieza completa. Descuento: mm que se quitan en cada lado. Esquina: encuentro con otro frente (+14 alarga la pieza por ese lado; −14 la acorta); con esquina, el descuento de ese lado queda a 0. Visto: ese lado queda a la vista; descuento 0 y en el DXF lleva línea de canto visto.')}</div>
     <div class="grid2">${[['t','⬆ Arriba'],['b','⬇ Abajo']].map(([k,l])=>`<label class="note">${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt((f.cfg?f.cfg.cuts:p.cuts)[k]))}" style="display:block;width:100%;margin-top:4px"></label>`).join('')}</div>
     <div class="grid2" style="margin-top:8px">${[['l','⬅ Izquierda'],['r','Derecha ➡']].map(([k,t])=>{const vi=vistoOf(f)[k];return `<div style="border:1px solid var(--line);border-radius:10px;padding:8px"><div style="font-weight:600;margin-bottom:6px">${t}</div>
-      <label class="note">Descuento<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt(vi?0:(f.cfg?f.cfg.cuts:p.cuts)[k]))}" ${vi?'disabled':''} style="display:block;width:100%;margin-top:2px"></label>
+      <label class="note">Descuento<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt(vi||esqOf(f)[k]?0:(f.cfg?f.cfg.cuts:p.cuts)[k]))}" ${vi||esqOf(f)[k]?'disabled':''} style="display:block;width:100%;margin-top:2px"></label>
       <label class="note" style="display:block;margin-top:6px">Esquina<select class="in" data-esq="${k}" ${vi?'disabled':''} style="display:block;width:100%;margin-top:2px;font-size:18px;padding:10px">${(()=>{const cur=num(String((f.esq&&f.esq[k])||'0').replace('−','-'))||0;const opts=[0,-14,14,-22,22];if(!opts.includes(cur))opts.push(cur);
       return opts.map(v=>`<option value="${v>0?'+'+v:v}" ${v===cur?'selected':''}>${v===0?'0':(v>0?'+':'−')+Math.abs(v)}</option>`).join('');})()}</select></label>
       <button type="button" class="btn full ${vi?'on':''}" data-visto="${k}" style="margin-top:8px;${vi?'background:#ea580c;color:#fff;border-color:#ea580c':''}">${vi?'✓ ':''}Visto</button></div>`;}).join('')}</div></div>
@@ -1014,7 +1015,7 @@ function renderFrente(app){
     Store.save(p);drawCanvas();renderPrev();
   });
   // encuentro de esquinas
-  const esqSet=(k,v)=>{const f=F(),p=P();if(!f||!p)return;f.esq=f.esq||{};f.esq[k]=v;Store.save(p);renderPrev();
+  const esqSet=(k,v)=>{const f=F(),p=P();if(!f||!p)return;f.esq=f.esq||{};f.esq[k]=v;Store.save(p);render();
     const h=null;const e=esqOf(f);if(h)h.textContent='Encuentro de esquinas'+(e.l||e.r?' · '+[e.l?'izq '+fAj(e.l):'',e.r?'dcha '+fAj(e.r):''].filter(Boolean).join(', '):'');};
   app.querySelectorAll('[data-visto]').forEach(b=>b.onclick=e=>{e.preventDefault();const f=F(),p=P();if(!f||!p)return;const k=b.dataset.visto;
     f.visto=f.visto||{};f.visto[k]=!f.visto[k];
