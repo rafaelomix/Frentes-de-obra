@@ -930,6 +930,7 @@ function renderHome(app){
 }
 
 document.addEventListener('change',e=>{if(e.target&&e.target.id==='incFotos'){incFotos=e.target.checked;try{localStorage.setItem('fc_incFotos',incFotos?'1':'0');}catch(_){}}});
+let showArch=false;try{showArch=JSON.parse(localStorage.getItem('fc_showarch'))===true;}catch(e){}   // filtro «Mostrar archivados» (por defecto quitado)
 function renderPromo(app){
   const p=P();$('#ttl').textContent=p.title;
   const loc=p.loc||{};
@@ -942,11 +943,12 @@ function renderPromo(app){
    <div style="font-weight:600;margin:14px 2px 6px;padding-top:10px;border-top:1px solid var(--line)">📐 Planos</div>
    ${(p.planos||[]).map((pl,i)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><button class="item" data-act="planOpen" data-i="${i}" style="padding:10px;flex:1;margin:0"><div class="grow"><div class="t" style="font-size:15px">${/^(jpe?g|png|webp)$/.test(pl.ext)?'🖼':pl.ext==='pdf'?'📄':'📐'} ${esc(pl.name)}</div><div class="s">${esc((pl.ext||'').toUpperCase())}${pl.size?' · '+(pl.size/1048576).toFixed(1).replace('.',',')+' MB':''}</div></div><span class="chev">›</span></button><button class="btn sm dang" data-act="planDel" data-i="${i}" aria-label="Borrar plano">🗑</button></div>`).join('')}
    <div style="display:flex;gap:6px"><button class="btn" data-act="planUp" style="flex:1">⬆ Subir planos (DWG, DXF, PDF o imagen)</button><button class="btn" data-act="planCam" title="Hacer una foto (p. ej. de un plano en papel)">📷</button></div></div></div></div>
-  <h2>Pisos</h2>`+
-  (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
+  <div style="display:flex;align-items:center;gap:8px;margin:18px 4px 8px"><h2 style="margin:0;flex:1">Pisos</h2>
+   <label class="note" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="showArch" ${showArch?'checked':''} style="width:20px;height:20px">Mostrar archivados${(()=>{const n=p.pisos.filter(x=>x.archivado).length;return n?' ('+n+')':'';})()}</label></div>`+
+  (p.pisos.filter(pi=>showArch||!pi.archivado).length?p.pisos.filter(pi=>showArch||!pi.archivado).map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     const fph=(allPhotos(pi)[0]||{}).photo;
-    return `<button class="item" data-act="openPiso" data-id="${pi.id}">${fph?`<img class="thumb" data-ph="${esc(JSON.stringify(fph))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
-   :`<div class="empty">Sin pisos todavía.</div>`)+
+    return `<button class="item" data-act="openPiso" data-id="${pi.id}" ${pi.archivado?'style="opacity:.55"':''}>${fph?`<img class="thumb" data-ph="${esc(JSON.stringify(fph))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(pi.title)}${pi.archivado?' <span class="note">· 📦 archivado</span>':''}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
+   :`<div class="empty">${p.pisos.length?'Todos los pisos están archivados.':'Sin pisos todavía.'}</div>`)+
   `<button class="btn pri full" data-act="newPiso" style="margin-top:4px">+ Añadir piso</button>
   <div class="card" style="margin-top:12px">${foldHead('pexp','Exportar')}<div class="${foldCls('pexp')}" data-foldc="pexp" style="margin-top:8px">
    <div style="font-weight:600;margin:0 2px 6px">Todos los DXF de los pisos${qh('Un archivo DXF por cada piso, todos juntos.')}</div>
@@ -958,6 +960,7 @@ function renderPromo(app){
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPromo">Borrar promoción</button>`;
   app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.thumbURL(JSON.parse(im.dataset.ph));if(u)im.src=u;});
   app.querySelectorAll('[data-pset]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null&&v>0){p[i.dataset.pset]=v;Store.save(p);}});
+  const sa=$('#showArch');if(sa)sa.onchange=()=>{showArch=sa.checked;LS.set('fc_showarch',showArch);render();};
   const lt=$('#locTxt');if(lt)lt.onchange=()=>{p.loc={...(p.loc||{}),txt:lt.value.trim()};Store.save(p);};
   app.querySelectorAll('[data-cut]').forEach(i=>i.oninput=()=>{const v=num(i.value);if(v!=null){p.cuts[i.dataset.cut]=v;Store.save(p);}});
 }
@@ -965,7 +968,8 @@ function renderPromo(app){
 function renderPiso(app){
   const p=P(),pi=PI();$('#ttl').textContent=pi.title;
   const fotos=pi.fotos||[],cps=pi.copetes||[];
-  app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
+  app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}
+   <label style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer"><input type="checkbox" id="piArch" ${pi.archivado?'checked':''} style="width:20px;height:20px"><span>📦 Archivado</span></label></div>
   <div class="card">${foldHead('pfot','Fotos'+(fotos.length?' ('+fotos.length+')':''))}<div class="${foldCls('pfot')}" data-foldc="pfot" style="margin-top:8px">
    ${fotos.length?`<div class="phgrid">${fotos.map((x,i)=>`<button class="phcell ${frOf(x)&&x.med&&!medNext(x)?'wide':''}" data-act="openFoto" data-i="${i}"><img data-ph="${esc(JSON.stringify(x.photo))}" ${frOf(x)&&x.med&&!medNext(x)?`data-medi="${i}"`:''} alt=""><span>${i+1}${(x.draw&&x.draw.length)||(x.notes&&x.notes.length)?' ✏':''}${(()=>{const fr=pi.frentes.find(f=>f.id===x.fr);return fr?' · '+esc(fr.name||'Frente'):'';})()}</span></button>`).join('')}</div>`:''}
    <div class="grid2"><button class="btn" data-act="pfCam">📷 Hacer foto</button><button class="btn" data-act="pfGal">🖼 Galería</button></div>
@@ -991,6 +995,7 @@ function renderPiso(app){
   app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.thumbURL(JSON.parse(im.dataset.ph));if(u)im.src=u;
     if(im.dataset.medi!=null){const x=pi.fotos[+im.dataset.medi],d=await medThumb(x);if(d)im.src=d;}});
   pi.frentes.forEach(f=>{const el=app.querySelector(`[data-pz="${f.id}"]`);if(el)renderPrev(f,el,app.querySelector(`[data-pzcut="${f.id}"]`));});
+  const pa=$('#piArch');if(pa)pa.onchange=()=>{const p=P(),pi=PI();if(!p||!pi)return;pi.archivado=pa.checked;Store.save(p);toast(pa.checked?'Piso archivado: no saldrá en la lista salvo con «Mostrar archivados»':'Piso desarchivado');};
   const pn=$('#piNota');if(pn)pn.oninput=()=>{const p=P(),pi=PI();if(!p||!pi)return;pi.nota=pn.value;Store.save(p);};
   setTimeout(()=>{if(route.v!=='piso'||inlineOpen)return;if(!foldOff('cop'))A.addCop();},0);
 }
