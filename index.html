@@ -964,7 +964,8 @@ function renderPiso(app){
   app.innerHTML=`<div class="card"><div class="note">${esc(p.title)}</div><div class="ttl"><b>${esc(pi.title)}</b><button class="btn sm" data-act="renPiso">Editar</button></div>${pi.fecha?`<div class="note">📅 Medido el ${esc(fFecha(pi.fecha))}</div>`:''}</div>
   <div class="card">${foldHead('pfot','Fotos'+(fotos.length?' ('+fotos.length+')':''))}<div class="${foldCls('pfot')}" data-foldc="pfot" style="margin-top:8px">
    ${fotos.length?`<div class="phgrid">${fotos.map((x,i)=>`<button class="phcell" data-act="openFoto" data-i="${i}"><img data-ph="${esc(JSON.stringify(x.photo))}" alt=""><span>${i+1}${(x.draw&&x.draw.length)||(x.notes&&x.notes.length)?' ✏':''}${(()=>{const fr=pi.frentes.find(f=>f.id===x.fr);return fr?' · '+esc(fr.name||'Frente'):'';})()}</span></button>`).join('')}</div>`:''}
-   <div class="grid2"><button class="btn" data-act="pfCam">📷 Hacer foto</button><button class="btn" data-act="pfGal">🖼 Galería</button></div></div></div>
+   <div class="grid2"><button class="btn" data-act="pfCam">📷 Hacer foto</button><button class="btn" data-act="pfGal">🖼 Galería</button></div>
+   <button class="btn pri full" data-act="pfNewFr" style="margin-top:8px">📷 Foto de un frente nuevo</button></div></div>
   <div class="card">${foldHead('pnot','Notas'+((pi.nota||'').trim()?' ✏':''))}<div class="${foldCls('pnot')}" data-foldc="pnot" style="margin-top:8px"><textarea class="in" id="piNota" rows="3" placeholder="Notas de este piso…" style="width:100%;box-sizing:border-box;resize:vertical;font:inherit">${esc(pi.nota||'')}</textarea></div></div>
   <div class="card">${foldHead('pfre','Frentes'+(pi.frentes.length?' ('+pi.frentes.length+')':''))}<div class="${foldCls('pfre')}" data-foldc="pfre" style="margin-top:8px">`+
   pi.frentes.map((f,i)=>{const n=filled(f),ne=(f.enchufes||[]).length;
@@ -998,7 +999,7 @@ function renderFoto(app){
   <div class="grid2" style="margin-top:8px"><button class="btn" data-act="photoJpg">⬇ Guardar foto anotada</button><button class="btn dang" data-act="phDel">Quitar foto</button></div>`;
   setupCanvas();
   const mf=$('#phFr');if(mf)mf.onchange=()=>{const pi=PI(),ph=PH();if(!ph)return;
-    if(mf.value==='__new'){const f=mkFrente(pi);ph.fr=f.id;}else ph.fr=mf.value||null;
+    if(mf.value==='__new'){const f=mkFrente(pi);ph.fr=f.id;if(!ph.med)ph.med={pts:{}};drawTool='med';toast('Frente creado. Marca las 4 puntas del láser');}else ph.fr=mf.value||null;
     if(!ph.fr&&drawTool==='med')drawTool='mover';
     Store.save(P());render();};
   medMsg();
@@ -2445,7 +2446,8 @@ const A={
   addNoPhoto(){newFrente(null);},
   openFrente(d){go({v:'frente',p:route.p,pi:route.pi,f:d.id});},
   photoCam(){pickPhoto('#fCam',{rep:route.i});},photoGal(){pickPhoto('#fGal',{rep:route.i});},
-  pfCam(){pickPhoto('#fCam',{add:true});},pfGal(){pickPhoto('#fGal',{add:true});},
+  pfCam(){pickPhoto('#fCam',{add:true});},
+  pfNewFr(){pickPhoto('#fCam',{add:true,newFr:true});},pfGal(){pickPhoto('#fGal',{add:true});},
   openFoto(d){go({v:'foto',p:route.p,pi:route.pi,i:+d.i});},
   fotoPrev(){if(route.i>0)go({...route,i:route.i-1});},fotoNext(){if(route.i<(PI().fotos||[]).length-1)go({...route,i:route.i+1});},
   async phDel(){const pi=PI();if(!await confirmDel('la foto '+(route.i+1)+' (con su dibujo y notas)'))return;
@@ -2534,6 +2536,9 @@ async function onPhoto(e){
     const pi=PI();
     if(pi&&pi.id===photoTarget.pi){pi.fotos=pi.fotos||[];
       if(photoTarget.rep!=null&&pi.fotos[photoTarget.rep]){pi.fotos[photoTarget.rep].photo=ref;VIEW={z:1,tx:0,ty:0};Store.save(P());render();}
+      else if(photoTarget.newFr){// foto de un frente nuevo: se crea el frente, se le asigna la foto y se abre para marcar el láser
+        const f=mkFrente(pi);pi.fotos.push({id:uid(),photo:ref,draw:[],notes:[],fr:f.id,med:{pts:{}}});Store.save(P());
+        go({v:'frente',p:route.p,pi:pi.id,f:f.id});toast('Frente creado. Marca las 4 puntas del láser en la foto');}
       else{pi.fotos.push({id:uid(),photo:ref,draw:[],notes:[],fr:photoTarget.fr||null});Store.save(P());
         if(route.v==='piso'){FOLD.pfot=false;render();}
         else if(route.v==='frente'){PHI=frPhotos(F()).length-1;VIEW={z:1,tx:0,ty:0};FOLD.ffot=false;render();}
