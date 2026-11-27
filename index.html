@@ -974,7 +974,7 @@ function renderFoto(app){
      <button class="btn sm ${drawTool==='med'?'on':''}" data-act="dmed">📐 Medidas</button>
      <button class="btn sm ${fingerDraw?'on':''}" data-act="dfinger" title="Permitir dibujar con el dedo">☝ Dedo</button>
      <button class="btn sm" data-act="dundo">↶ Deshacer</button><button class="btn sm dang" data-act="dclear">Borrar dibujo</button>
-     ${VIEW.z>1.01?'<button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button>':''}${qh('✋ Mover: no pinta; arrastra para moverte por la foto ampliada. Colores: dibujar (la línea se ve siempre igual de fina, aunque amplíes). 🧽 Goma: toca o arrastra sobre un trazo para borrarlo. 📝 Nota: toca la foto para añadir una nota; toca una nota para editarla. 📐 Medidas: marca las 4 puntas de la cruz del láser y escribe cada medida en su casilla; se guardan en el frente elegido. Solo el Apple Pencil dibuja y borra; con el dedo te mueves por la foto o la página, y con dos dedos acercas o alejas. ☝ Dedo: permite dibujar también con el dedo (para el móvil).')}</div>${drawTool==='med'?medBar():''}<div class="cvwrap"><canvas id="cv"></canvas><div id="medLay"></div></div></div>
+     ${VIEW.z>1.01?'<button class="btn sm" data-act="zoomReset">🔍 Ver foto entera</button>':''}${qh('✋ Mover: no pinta; arrastra para moverte por la foto ampliada. Colores: dibujar (la línea se ve siempre igual de fina, aunque amplíes). 🧽 Goma: toca o arrastra sobre un trazo para borrarlo. 📝 Nota: toca la foto para añadir una nota; toca una nota para editarla. 📐 Medidas: ajusta el rectángulo a las esquinas del frente y el punto rojo al cruce del láser, y escribe cada medida en su casilla; se guardan en el frente de la foto. Solo el Apple Pencil dibuja y borra; con el dedo te mueves por la foto o la página, y con dos dedos acercas o alejas. ☝ Dedo: permite dibujar también con el dedo (para el móvil).')}</div>${drawTool==='med'?medBar():''}<div class="cvwrap"><canvas id="cv"></canvas><div id="medLay"></div></div></div>
   <div class="grid2" style="margin-top:10px"><button class="btn" data-act="photoCam">📷 Cambiar foto</button><button class="btn" data-act="photoGal">🖼 Cambiar (galería)</button></div>
   <div class="grid2" style="margin-top:8px"><button class="btn" data-act="photoJpg">⬇ Guardar foto anotada</button><button class="btn dang" data-act="phDel">Quitar foto</button></div>`;
   setupCanvas();
@@ -1222,9 +1222,8 @@ async function setupCanvas(){
       if(touches.size>2)return;
       if(mode==='draw'&&drawTool!=='nota'&&drawTool!=='med'&&!fingerDraw){if(VIEW.z>1){pan={p0:wrapPt(e),tx0:VIEW.tx,ty0:VIEW.ty};try{cv.setPointerCapture(e.pointerId);}catch(_){}}return;}   // dibujar y borrar: solo con el Apple Pencil
     }
-    if(mode==='draw'&&drawTool==='med'){const ph=PH();if(!ph||!frOf(ph))return;ph.med=ph.med||{pts:{}};ph.med.pts=ph.med.pts||{};const pt=pos(e),nk=medNext(ph);
-      if(nk){medTap={k:nk,q:[pt[0]/cv.width,pt[1]/cv.height],c:[e.clientX,e.clientY]};return;}
-      const ps=ph.med.pts,tol=26*U();let best=null,bd=1e9;
+    if(mode==='draw'&&drawTool==='med'){const ph=PH();if(!ph||!frOf(ph))return;medFix(ph);const pt=pos(e);
+      const ps=medHandles(ph),tol=28*U();let best=null,bd=1e9;
       for(const k in ps){const d=Math.hypot(ps[k][0]*cv.width-pt[0],ps[k][1]*cv.height-pt[1]);if(d<tol&&d<bd){bd=d;best=k;}}
       if(best){mdrag=best;try{cv.setPointerCapture(e.pointerId);}catch(_){}return;}
       if(VIEW.z>1){pan={p0:wrapPt(e),tx0:VIEW.tx,ty0:VIEW.ty};try{cv.setPointerCapture(e.pointerId);}catch(_){}}return;}
@@ -1264,7 +1263,10 @@ async function setupCanvas(){
       pinch.zooming=true;const cx=(pinch.m0[0]-pinch.tx0)/pinch.z0,cy=(pinch.m0[1]-pinch.ty0)/pinch.z0;
       VIEW={z,tx:m[0]-cx*z,ty:m[1]-cy*z};applyView();return;}
     if(medTap&&medTap.c&&Math.hypot(e.clientX-medTap.c[0],e.clientY-medTap.c[1])>12)medTap=null;
-    if(mdrag){const pt=pos(e),ph=PH();ph.med.pts[mdrag]=[Math.min(1,Math.max(0,pt[0]/cv.width)),Math.min(1,Math.max(0,pt[1]/cv.height))];drawCanvas();return;}
+    if(mdrag){const pt=pos(e),ph=PH(),x=pt[0]/cv.width,y=pt[1]/cv.height;
+      if(mdrag==='c'){const inv=medHinv(ph);if(inv){const q=inv(x,y);ph.med.c=[Math.min(.95,Math.max(.05,q[0])),Math.min(.95,Math.max(.05,q[1]))];}}
+      else ph.med.q[+mdrag]=[Math.min(1.2,Math.max(-.2,x)),Math.min(1.2,Math.max(-.2,y))];
+      drawCanvas();return;}
     if(pan){const p=wrapPt(e);VIEW.tx=pan.tx0+p[0]-pan.p0[0];VIEW.ty=pan.ty0+p[1]-pan.p0[1];applyView();return;}
     if(drag&&mode==='laser'){setCross(pos(e));return;}
     if(cdrag){const f=F(),pt=pos(e),k=cdrag.k,W=cv.width,H=cv.height;f.cp=f.cp||{};const c=f.cp[k]=f.cp[k]||{};const cl=v=>Math.min(.995,Math.max(.005,v));
@@ -1288,7 +1290,6 @@ async function setupCanvas(){
     if(pan){pan=null;return;}
     if(wasPinch){medTap=null;return;}
     if(mdrag){mdrag=null;Store.save(P());return;}
-    if(medTap){const ph=PH();ph.med.pts[medTap.k]=medTap.q;medTap=null;Store.save(P());drawCanvas();medMsg();return;}
     if(drag){drag=false;Store.save(P());}
     if(cdrag){cdrag=null;Store.save(P());}
     if(erasing){erasing=false;if(!erased&&UNDO.st.length)UNDO.st.pop();else Store.save(P());}
@@ -1296,23 +1297,25 @@ async function setupCanvas(){
   };
 }
 // ===== Medir sobre la foto =====
-// ph.med={f:id del frente, pts:{l,r,t,b}} con las 4 puntas de la cruz del láser (fracciones de la foto).
-// Con esas 4 puntas se calcula la perspectiva (homografía) y las 8 casillas se colocan sobre las líneas.
-const MSTEPS=[['l','Toca donde el láser horizontal llega a la pared IZQUIERDA'],['r','Toca donde el láser horizontal llega a la pared DERECHA'],
-  ['t','Toca donde el láser vertical llega ARRIBA (techo o mueble alto)'],['b','Toca donde el láser vertical llega ABAJO (mueble)']];
-const MUV={l:[-1,0],r:[1,0],t:[0,1],b:[0,-1]};
-// flecha de cada medida (desde el rayo hasta la pared) y sitio de su casilla, en el plano del frente (u: izq−/dcha+, v: abajo−/arriba+)
-const MARR={lt:[[0,.55],[-1,.55],[-.45,.55]],lb:[[0,-.55],[-1,-.55],[-.45,-.55]],rt:[[0,.55],[1,.55],[.45,.55]],rb:[[0,-.55],[1,-.55],[.45,-.55]],
-  ul:[[-.8,0],[-.8,1],[-.8,.8]],dl:[[-.8,0],[-.8,-1],[-.8,-.8]],ur:[[.8,0],[.8,1],[.8,.8]],dr:[[.8,0],[.8,-1],[.8,-.8]]};
-function medNext(ph){const p=(ph&&ph.med&&ph.med.pts)||{};if(ph&&!frOf(ph))return null;const s=MSTEPS.find(([k])=>!p[k]);return s?s[0]:null;}
-// Colocación: el cruce C es donde se cortan las dos líneas del láser. Cada cuadrante usa sus dos semirrayos
-// (C→pared izq/dcha y C→techo/mueble), así las cotas siguen la inclinación real de las líneas de la foto.
-function medH(ph){const p=ph&&ph.med&&ph.med.pts;if(!p||medNext(ph))return null;
-  const x=(a,b)=>a[0]*b[1]-a[1]*b[0],d1=[p.r[0]-p.l[0],p.r[1]-p.l[1]],d2=[p.b[0]-p.t[0],p.b[1]-p.t[1]],den=x(d1,d2);
-  let C;if(Math.abs(den)<1e-9)C=[(p.l[0]+p.r[0])/2,(p.t[1]+p.b[1])/2];
-  else{const t=x([p.t[0]-p.l[0],p.t[1]-p.l[1]],d2)/den;C=[p.l[0]+t*d1[0],p.l[1]+t*d1[1]];}
-  const V=q=>[q[0]-C[0],q[1]-C[1]],L=V(p.l),R=V(p.r),T=V(p.t),B=V(p.b);
-  return(u,v)=>{const U=u<0?L:R,W=v>0?T:B,a=Math.abs(u),b=Math.abs(v);return[C[0]+a*U[0]+b*W[0],C[1]+a*U[1]+b*W[1]];};}
+// ph.med={q:[TL,TR,BR,BL] (esquinas del rectángulo del frente en la foto, fracciones), c:[u,w] (cruce del láser dentro del rectángulo, 0-1)}
+// El rectángulo se deforma con la perspectiva (homografía) y todas las cotas se colocan dentro de él.
+function medDefault(){return{q:[[.12,.18],[.88,.18],[.88,.82],[.12,.82]],c:[.5,.5]};}
+function medFix(ph){const m=ph.med;if(m&&m.q&&m.c)return m;
+  // datos antiguos (4 puntas del láser): rectángulo que pasa por ellas
+  const p=m&&m.pts;if(p&&p.l&&p.r&&p.t&&p.b){const dy=[p.t[0]-(p.l[0]+p.r[0])/2,p.t[1]-(p.l[1]+p.r[1])/2],ey=[p.b[0]-(p.l[0]+p.r[0])/2,p.b[1]-(p.l[1]+p.r[1])/2];
+    ph.med={q:[[p.l[0]+dy[0],p.l[1]+dy[1]],[p.r[0]+dy[0],p.r[1]+dy[1]],[p.r[0]+ey[0],p.r[1]+ey[1]],[p.l[0]+ey[0],p.l[1]+ey[1]]],c:[.5,.5]};}
+  else ph.med=medDefault();
+  return ph.med;}
+const UNIT=[[0,0],[1,0],[1,1],[0,1]];
+function medH(ph){if(!ph||!frOf(ph))return null;const m=medFix(ph),h=homog(UNIT,m.q);return h?(u,w)=>hMap(h,u,w):null;}
+function medHinv(ph){const m=medFix(ph),h=homog(m.q,UNIT);return h?(x,y)=>hMap(h,x,y):null;}
+function hMap(h,u,v){const w=h[6]*u+h[7]*v+1;return[(h[0]*u+h[1]*v+h[2])/w,(h[3]*u+h[4]*v+h[5])/w];}
+// cotas dentro del rectángulo (u: izq→dcha, w: arriba→abajo), según dónde está el cruce
+function medLayout(c){const[cu,cw]=c,L=cu,R=1-cu,T=cw,B=1-cw;
+  const wt=cw-T*.45,wb=cw+B*.45,ul=cu-L*.82,ur=cu+R*.82;
+  return{lt:[[cu,wt],[0,wt],[cu-L*.5,wt]],lb:[[cu,wb],[0,wb],[cu-L*.5,wb]],rt:[[cu,wt],[1,wt],[cu+R*.5,wt]],rb:[[cu,wb],[1,wb],[cu+R*.5,wb]],
+    ul:[[ul,cw],[ul,0],[ul,cw-T*.72]],dl:[[ul,cw],[ul,1],[ul,cw+B*.72]],ur:[[ur,cw],[ur,0],[ur,cw-T*.72]],dr:[[ur,cw],[ur,1],[ur,cw+B*.72]]};}
+function medHandles(ph){const m=medFix(ph),h=medH(ph),o={0:m.q[0],1:m.q[1],2:m.q[2],3:m.q[3]};if(h)o.c=h(m.c[0],m.c[1]);return o;}
 function homog(src,dst){const A=[],B=[];
   for(let i=0;i<4;i++){const[x,y]=src[i],[X,Y]=dst[i];A.push([x,y,1,0,0,0,-X*x,-X*y]);B.push(X);A.push([0,0,0,x,y,1,-Y*x,-Y*y]);B.push(Y);}
   const h=linSolve(A,B);if(!h)return null;h.push(1);return h;}
@@ -1322,21 +1325,24 @@ function linSolve(A,b){const n=b.length,M=A.map((r,i)=>[...r,b[i]]);
   return M.map((r,i)=>r[n]/r[i]);}
 function mkFrente(pi){const f={id:uid(),name:'Frente '+(pi.frentes.length+1),cx:.5,cy:.55,m:{},enchufes:[]};pi.frentes.push(f);Store.save(P());return f;}
 function medF(){return frOf(PH());}
-function medBar(){return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><div class="note grow" id="medMsg" style="font-weight:600;flex:1"></div><button class="btn sm" data-act="medReset" style="flex:none">↺ Recolocar láser</button></div>`;}
+function medBar(){return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><div class="note grow" id="medMsg" style="font-weight:600;flex:1"></div><button class="btn sm" data-act="medReset" style="flex:none">↺ Recolocar</button></div>`;}
 function frSel(ph){const pi=PI();return `<label class="note" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">Frente<select class="in" id="phFr" style="flex:1;min-width:0;font-size:16px;padding:8px"><option value="">— Ninguno (foto general) —</option>${pi.frentes.map((f,i)=>`<option value="${f.id}" ${ph&&f.id===ph.fr?'selected':''}>${esc(f.name||'Frente '+(i+1))}</option>`).join('')}<option value="__new">+ Nuevo frente</option></select></label>`;}
-function medMsg(){const el=$('#medMsg');if(!el)return;const ph=PH(),k=medNext(ph);
-  el.style.color=k?'#c2410c':'';el.textContent=k?(MSTEPS.findIndex(x=>x[0]===k)+1)+'/4 · '+MSTEPS.find(x=>x[0]===k)[1]+'.':'Escribe cada medida en su casilla (con el lápiz o el teclado). Arrastra los puntos para ajustar la cruz.';}
-// Dibujo de la cruz y las flechas (solo en pantalla, no sale en la foto exportada)
+function medMsg(){const el=$('#medMsg');if(el)el.textContent='Lleva las 4 esquinas del rectángulo a las esquinas del frente y el punto rojo al cruce del láser. Escribe cada medida en su casilla.';}
+// Dibujo del rectángulo, la cruz y las flechas (solo en pantalla, no sale en la foto exportada)
 function drawMed(ctx,W,H,ph,u){
-  const p=ph.med.pts||{},h=medH(ph),P2=q=>[q[0]*W,q[1]*H];ctx.save();ctx.lineCap='round';
-  if(h){const line=(a,b,c,w,dash)=>{ctx.strokeStyle=c;ctx.lineWidth=w;ctx.setLineDash(dash||[]);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();};
-    const I=(uu,vv)=>P2(h(uu,vv));
-    line(P2(p.l),P2(p.r),'rgba(239,68,68,.9)',2*u,[8*u,5*u]);line(P2(p.t),P2(p.b),'rgba(239,68,68,.9)',2*u,[8*u,5*u]);ctx.setLineDash([]);
-    for(const k in MARR){const[a,b]=MARR[k],A=I(...a),B=I(...b);line(A,B,PAIRC[k],2.2*u);
-      const ang=Math.atan2(B[1]-A[1],B[0]-A[0]),L=9*u;ctx.fillStyle=PAIRC[k];ctx.beginPath();ctx.moveTo(B[0],B[1]);
-      ctx.lineTo(B[0]-L*Math.cos(ang-.45),B[1]-L*Math.sin(ang-.45));ctx.lineTo(B[0]-L*Math.cos(ang+.45),B[1]-L*Math.sin(ang+.45));ctx.closePath();ctx.fill();}
-    const c=I(0,0);ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(c[0],c[1],4*u,0,7);ctx.fill();}
-  for(const k in p){const q=P2(p[k]);ctx.lineWidth=2.5*u;ctx.strokeStyle='#fff';ctx.fillStyle='rgba(239,68,68,.85)';ctx.beginPath();ctx.arc(q[0],q[1],9*u,0,7);ctx.fill();ctx.stroke();}
+  const h=medH(ph);if(!h)return;const m=ph.med,P2=q=>[q[0]*W,q[1]*H],I=(a,b)=>P2(h(a,b));ctx.save();ctx.lineCap='round';
+  const line=(a,b,c,w,dash)=>{ctx.strokeStyle=c;ctx.lineWidth=w;ctx.setLineDash(dash||[]);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();};
+  // rectángulo del frente
+  ctx.fillStyle='rgba(255,255,255,.10)';ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2*u;ctx.setLineDash([]);ctx.beginPath();m.q.forEach((q,i)=>{const p=P2(q);i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);});ctx.closePath();ctx.fill();ctx.stroke();
+  // láser
+  const[cu,cw]=m.c;line(I(0,cw),I(1,cw),'rgba(239,68,68,.9)',2*u,[8*u,5*u]);line(I(cu,0),I(cu,1),'rgba(239,68,68,.9)',2*u,[8*u,5*u]);ctx.setLineDash([]);
+  const lay=medLayout(m.c);
+  for(const k in lay){const[a,b]=lay[k],A=I(...a),B=I(...b);line(A,B,PAIRC[k],2.2*u);
+    const ang=Math.atan2(B[1]-A[1],B[0]-A[0]),L=9*u;ctx.fillStyle=PAIRC[k];ctx.beginPath();ctx.moveTo(B[0],B[1]);
+    ctx.lineTo(B[0]-L*Math.cos(ang-.45),B[1]-L*Math.sin(ang-.45));ctx.lineTo(B[0]-L*Math.cos(ang+.45),B[1]-L*Math.sin(ang+.45));ctx.closePath();ctx.fill();}
+  // tiradores: esquinas (blancas) y cruce (rojo)
+  const hs=medHandles(ph);
+  for(const k in hs){const q=P2(hs[k]);ctx.lineWidth=2.5*u;ctx.strokeStyle=k==='c'?'#fff':'#111827';ctx.fillStyle=k==='c'?'rgba(239,68,68,.9)':'rgba(255,255,255,.9)';ctx.beginPath();ctx.arc(q[0],q[1],(k==='c'?9:11)*u,0,7);ctx.fill();ctx.stroke();}
   ctx.restore();
 }
 // Casillas sobre la foto, colocadas con la perspectiva
@@ -1351,7 +1357,7 @@ function placeMedInputs(){
         if(route.v==='frente'&&F()===f){const o=document.querySelector(`input[data-k="${k}"]`);if(o){o.value=v;o.classList.toggle('miss',num(v)==null);}renderPrev();}};
       lay.appendChild(ip);}
     if(document.activeElement!==ip){const v=f.m&&f.m[k];ip.value=v==null?'':v;}
-    const q=h(MARR[k][2][0],MARR[k][2][1]),x=q[0]*w*VIEW.z+VIEW.tx,y=q[1]*hh*VIEW.z+VIEW.ty;
+    const q=h(...medLayout(ph.med.c)[k][2]),x=q[0]*w*VIEW.z+VIEW.tx,y=q[1]*hh*VIEW.z+VIEW.ty;
     ip.style.left=(x-35)+'px';ip.style.top=(y-17)+'px';ip.style.display=(x<-30||y<-20||x>w+30||y>hh+20)?'none':'';}
 }
 function q1(v){return Math.round(v*100)/100;}   // coordenadas con 2 decimales (0-1000): trazos finos aunque se amplíe mucho
@@ -2140,12 +2146,12 @@ const A={
   dnota(){drawTool=drawTool==='nota'?'pen':'nota';render();},
   dmed(){if(drawTool==='med'){drawTool='mover';render();return;}const ph=PH();if(!ph)return;
     if(!frOf(ph)){toast('Asigna antes la foto a un frente (arriba)');const s=$('#phFr');if(s)s.focus();return;}
-    if(!ph.med){ph.med={pts:{}};Store.save(P());}
+    if(!ph.med){ph.med=medDefault();Store.save(P());}
     drawTool='med';render();},
   ffCam(){pickPhoto('#fCam',{add:true,fr:route.f});},ffGal(){pickPhoto('#fGal',{add:true,fr:route.f});},
   ffPrev(){if(PHI>0){PHI--;VIEW={z:1,tx:0,ty:0};render();}},ffNext(){if(PHI<frPhotos(F()).length-1){PHI++;VIEW={z:1,tx:0,ty:0};render();}},
   ffOpen(){const ph=PH(),pi=PI();if(!ph)return;const back={...route};go({v:'foto',p:route.p,pi:route.pi,i:pi.fotos.indexOf(ph),back});},
-  medReset(){const ph=PH();if(ph&&ph.med){ph.med.pts={};Store.save(P());render();}},
+  medReset(){const ph=PH();if(ph){ph.med=medDefault();Store.save(P());render();}},
   dgoma(){drawTool=drawTool==='goma'?'pen':'goma';render();},
   cotasReset(){const f=F();undoPush();f.cp={};Store.save(P());drawCanvas();},
   zoomReset(){VIEW={z:1,tx:0,ty:0};render();},
