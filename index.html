@@ -48,9 +48,9 @@ h2{font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut)
 input.in{width:100%;font:600 17px system-ui,sans-serif;padding:10px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:var(--ink)}
 input.in:focus{outline:2px solid var(--acc);border-color:var(--acc)}
 input.in.miss{background:#fff7ed;border-color:#fdba74}
-.mg{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:8px;align-items:center}
+.mg{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:8px;align-items:stretch}.mg>div:nth-child(2){display:flex;padding:14px 0 4px}
 .mg .col{display:flex;flex-direction:column;gap:8px}
-.mg svg{width:100%;height:auto}
+.mg svg{width:100%;height:100%;min-height:160px}
 .cvwrap{position:relative;border-radius:10px;overflow:hidden;background:#000;margin:0 14px 10px}   /* margen a los lados: ahí el dedo mueve la página */
 #cv{transform-origin:0 0;display:block}
 #mbox.inlinebox{background:#f9fafb;border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0}
@@ -879,7 +879,7 @@ const P=()=>S.promos.find(p=>p.id===route.p);
 const PI=()=>{const p=P();return p&&p.pisos.find(x=>x.id===route.pi);};
 const F=()=>{const pi=PI();return pi&&pi.frentes.find(x=>x.id===route.f);};
 function filled(f){return KEYS.filter(k=>num(f.m[k])!=null).length;}
-function go(r){dictStop();encAddMode=false;selEnc=null;descMode=false;descSide=null;VIEW={z:1,tx:0,ty:0};PHI=0;FOLD={};drawTool='mover';if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
+function go(r){dictStop();encAddMode=false;selEnc=null;descMode=true;descSide=null;VIEW={z:1,tx:0,ty:0};PHI=0;FOLD={};drawTool='mover';if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
 
 function fileBtn(label,cls,kind){
   const acc=kind==='imp'?'.json,application/json':'image/*',cap=kind.startsWith('cam')?' capture="environment"':'';
@@ -1013,13 +1013,13 @@ function renderFoto(app){
   medMsg();
 }
 
-function crossSVG(){
-  return `<svg viewBox="0 0 120 120" aria-hidden="true"><rect x="8" y="8" width="104" height="104" fill="#fff" stroke="#9ca3af" stroke-width="2"/>
-  <line x1="8" y1="64" x2="112" y2="64" stroke="#dc2626" stroke-width="2" stroke-dasharray="5 3"/><line x1="60" y1="8" x2="60" y2="112" stroke="#dc2626" stroke-width="2" stroke-dasharray="5 3"/>
-  <g stroke-width="2.5">
-  <line x1="60" y1="30" x2="12" y2="30" stroke="#2563eb"/><line x1="60" y1="94" x2="12" y2="94" stroke="#2563eb"/><line x1="60" y1="30" x2="108" y2="30" stroke="#16a34a"/><line x1="60" y1="94" x2="108" y2="94" stroke="#16a34a"/>
-  <line x1="20" y1="64" x2="20" y2="12" stroke="#9333ea"/><line x1="20" y1="64" x2="20" y2="108" stroke="#d97706"/><line x1="100" y1="64" x2="100" y2="12" stroke="#9333ea"/><line x1="100" y1="64" x2="100" y2="108" stroke="#d97706"/></g>
-  <text x="60" y="122" font-size="9" text-anchor="middle" fill="#6b7280">encimera</text></svg>`;
+// Esquema de la cruz del láser: se estira a la altura de las 8 casillas (las líneas caen a la altura de su casilla)
+function crossSVG(){const N='vector-effect="non-scaling-stroke"';
+  return `<svg viewBox="0 0 120 120" preserveAspectRatio="none" aria-hidden="true"><rect x="4" y="3" width="112" height="114" fill="#fff" stroke="#9ca3af" stroke-width="1.5" ${N}/>
+  <line x1="4" y1="60" x2="116" y2="60" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3" ${N}/><line x1="60" y1="3" x2="60" y2="117" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3" ${N}/>
+  <g stroke-width="3">
+  <line x1="60" y1="44" x2="8" y2="44" stroke="#2563eb" ${N}/><line x1="60" y1="76" x2="8" y2="76" stroke="#2563eb" ${N}/><line x1="60" y1="44" x2="112" y2="44" stroke="#16a34a" ${N}/><line x1="60" y1="76" x2="112" y2="76" stroke="#16a34a" ${N}/>
+  <line x1="16" y1="60" x2="16" y2="6" stroke="#9333ea" ${N}/><line x1="16" y1="60" x2="16" y2="114" stroke="#d97706" ${N}/><line x1="104" y1="60" x2="104" y2="6" stroke="#9333ea" ${N}/><line x1="104" y1="60" x2="104" y2="114" stroke="#d97706" ${N}/></g></svg>`;
 }
 
 function renderFrente(app){
@@ -1451,7 +1451,7 @@ function encListHTML(f){return (f.enchufes||[]).map((e,i)=>`<button class="item"
 function encRefresh(){if(route.v!=='frente')return;renderPrev();const l=$('#encList'),f=F();if(l&&f)l.innerHTML=encListHTML(f);
   const hd=document.querySelector('[data-fold="enc"] span');if(hd&&f)hd.textContent='Enchufes'+((f.enchufes||[]).length?' ('+f.enchufes.length+')':'');}
 // ===== Descuentos y esquinas en la foto =====
-let descMode=false,descSide=null;
+let descMode=true,descSide=null;   // descuentos visibles en la foto por defecto
 function ownCfgF(f){if(!f.cfg){const c0=cfgOf(P(),null);f.cfg={cuts:{...c0.cuts},dia:c0.dia,sep:c0.sep};}return f.cfg;}
 function descSetCut(f,k,v){const n=num(v);if(n==null)return;ownCfgF(f).cuts[k]=n;}
 function descSetEsq(f,k,v){f.esq=f.esq||{};f.esq[k]=v==='0'||v===0?'':String(v);}
