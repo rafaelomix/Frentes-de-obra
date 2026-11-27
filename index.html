@@ -861,7 +861,7 @@ const P=()=>S.promos.find(p=>p.id===route.p);
 const PI=()=>{const p=P();return p&&p.pisos.find(x=>x.id===route.pi);};
 const F=()=>{const pi=PI();return pi&&pi.frentes.find(x=>x.id===route.f);};
 function filled(f){return KEYS.filter(k=>num(f.m[k])!=null).length;}
-function go(r){dictStop();VIEW={z:1,tx:0,ty:0};PHI=0;FOLD={};drawTool='mover';if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
+function go(r){dictStop();encAddMode=false;selEnc=null;VIEW={z:1,tx:0,ty:0};PHI=0;FOLD={};drawTool='mover';if(typeof LZ!=='undefined')LZ.k=null;route=r;mode='draw';render();window.scrollTo(0,0);}
 
 function fileBtn(label,cls,kind){
   const acc=kind==='imp'?'.json,application/json':'image/*',cap=kind.startsWith('cam')?' capture="environment"':'';
@@ -1026,7 +1026,7 @@ function renderFrente(app){
     <div class="qhrow">${qh('Distancias desde las líneas del láser hasta el eje (centro) del enchufe. Agujeros de Ø'+fmt(cfgOf(p,f).dia)+', separación '+fmt(cfgOf(p,f).sep)+' mm.')}</div>
     <div id="encHost"></div>
     <button class="btn full" data-act="addEnc">+ Añadir enchufe</button>
-    ${(f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('')}
+    <div id="encList">${encListHTML(f)}</div>
     <details style="margin-top:10px"><summary class="note" style="cursor:pointer">⚙ Agujero Ø ${esc(fmt(cfgOf(p,f).dia))} · separación ${esc(fmt(cfgOf(p,f).sep))} mm</summary><div class="grid2" style="margin-top:6px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div></details></div></div>
    
    <div class="card">${foldHead('pieza','Pieza resultante')}<div class="${foldCls('pieza')}" data-foldc="pieza" style="margin-top:6px"><div class="note" id="cutnote" style="margin-bottom:8px"></div><div id="prev" class="prev"></div></div></div>
@@ -1205,8 +1205,8 @@ async function setupCanvas(){
   const setCross=([x,y])=>{const f=F();f.cx=Math.min(.98,Math.max(.02,x/cv.width));f.cy=Math.min(.98,Math.max(.02,y/cv.height));drawCanvas();};
   const wrapPt=e=>{const r=cv.parentElement.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];};
   // Al poner el segundo dedo se anula lo que hizo el primero (trazo, goma, cota o láser)
-  let medTap=null,mdrag=null;
-  const cancelStroke=()=>{medTap=null;mdrag=null;if((stroke||drag||cdrag||erasing)&&UNDO.st.length){undoRestore(JSON.parse(UNDO.st.pop()));drawCanvas();}
+  let medTap=null,mdrag=null,edrag=null;
+  const cancelStroke=()=>{medTap=null;mdrag=null;edrag=null;if((stroke||drag||cdrag||erasing)&&UNDO.st.length){undoRestore(JSON.parse(UNDO.st.pop()));drawCanvas();}
     stroke=null;lastPt=null;cdrag=null;erasing=false;drag=false;};
   const eraseAt=pt=>{const f=PH(),W=cv.width,H=cv.height,u=U();let hit=false;
     f.draw=(f.draw||[]).filter(st=>{const p=st.p,tol=(14+LINE_CSS/2)*u;
@@ -1225,6 +1225,13 @@ async function setupCanvas(){
     }
     if(mode==='draw'&&drawTool==='med'){const ph=PH();if(!ph||!frOf(ph))return;ph.med=ph.med||{pts:{}};const pt=pos(e),nk=medNext(ph);
       if(nk){medTap={k:nk,q:[pt[0]/cv.width,pt[1]/cv.height],c:[e.clientX,e.clientY]};return;}
+      const fr=frOf(ph),m=ph.med,inv=medHinv(ph),hh=medH(ph);
+      if(encAddMode&&inv){const q=inv(pt[0]/cv.width,pt[1]/cv.height);const e={lado:'dcha',h:'',vpos:'arriba',v:'',n:1,ori:'h',pos:{ph:ph.id,u:q[0],w:q[1]}};encSetSide(e,q,m.c);
+        fr.enchufes=fr.enchufes||[];fr.enchufes.push(e);selEnc=fr.enchufes.length-1;encAddMode=false;Store.save(P());
+        const eb=document.querySelector('[data-act=encAddFoto]');if(eb)eb.classList.remove('pri');medMsg();drawCanvas();encRefresh();return;}
+      if(hh){let bi=null,bd2=1e9;(fr.enchufes||[]).forEach((e,i)=>{const uw=encUW(e,fr,ph);if(!uw)return;const q=hh(uw[0],uw[1]),d=Math.hypot(q[0]*cv.width-pt[0],q[1]*cv.height-pt[1]);if(d<24*U()&&d<bd2){bd2=d;bi=i;}});
+        if(bi!=null){const ch=selEnc!==bi;selEnc=bi;edrag={i:bi,moved:false};try{cv.setPointerCapture(e.pointerId);}catch(_){}if(ch)drawCanvas();return;}}
+      if(selEnc!=null){selEnc=null;drawCanvas();}
       const ps=medHandles(ph),tol=28*U();let best=null,bd=1e9;
       for(const k in ps){const d=Math.hypot(ps[k][0]*cv.width-pt[0],ps[k][1]*cv.height-pt[1]);if(d<tol&&d<bd){bd=d;best=k;}}
       if(best){mdrag=best;try{cv.setPointerCapture(e.pointerId);}catch(_){}return;}
@@ -1265,6 +1272,8 @@ async function setupCanvas(){
       pinch.zooming=true;const cx=(pinch.m0[0]-pinch.tx0)/pinch.z0,cy=(pinch.m0[1]-pinch.ty0)/pinch.z0;
       VIEW={z,tx:m[0]-cx*z,ty:m[1]-cy*z};applyView();return;}
     if(medTap&&medTap.c&&Math.hypot(e.clientX-medTap.c[0],e.clientY-medTap.c[1])>12)medTap=null;
+    if(edrag){const pt=pos(e),ph=PH(),fr=frOf(ph),inv=medHinv(ph),en=fr&&fr.enchufes[edrag.i];if(en&&inv){const q=inv(pt[0]/cv.width,pt[1]/cv.height);
+      en.pos={ph:ph.id,u:Math.min(1.1,Math.max(-.1,q[0])),w:Math.min(1.1,Math.max(-.1,q[1]))};encSetSide(en,[en.pos.u,en.pos.w],ph.med.c);edrag.moved=true;drawCanvas();}return;}
     if(mdrag){const pt=pos(e),ph=PH(),x=pt[0]/cv.width,y=pt[1]/cv.height;
       if(mdrag==='c'){const inv=medHinv(ph);if(inv){const q=inv(x,y);ph.med.c=[Math.min(.95,Math.max(.05,q[0])),Math.min(.95,Math.max(.05,q[1]))];}}
       else ph.med.q[+mdrag]=[Math.min(1.2,Math.max(-.2,x)),Math.min(1.2,Math.max(-.2,y))];
@@ -1291,6 +1300,7 @@ async function setupCanvas(){
     if(touches.has(e.pointerId)){touches.delete(e.pointerId);ctouch.delete(e.pointerId);if(touches.size<2&&pinch){const zoomed=VIEW.z>1.01;pinch=null;if(zoomed||$('[data-act=zoomReset]'))render();return;}}
     if(pan){pan=null;return;}
     if(wasPinch){medTap=null;return;}
+    if(edrag){const mv=edrag.moved;edrag=null;if(mv){Store.save(P());encRefresh();}return;}
     if(mdrag){mdrag=null;Store.save(P());return;}
     if(medTap){const ph=PH();ph.med=ph.med||{pts:{}};ph.med.pts=ph.med.pts||{};ph.med.pts[medTap.k]=medTap.q;medTap=null;medFix(ph);Store.save(P());drawCanvas();medMsg();return;}
     if(drag){drag=false;Store.save(P());}
@@ -1335,10 +1345,10 @@ function linSolve(A,b){const n=b.length,M=A.map((r,i)=>[...r,b[i]]);
   return M.map((r,i)=>r[n]/r[i]);}
 function mkFrente(pi){const f={id:uid(),name:'Frente '+(pi.frentes.length+1),cx:.5,cy:.55,m:{},enchufes:[]};pi.frentes.push(f);Store.save(P());return f;}
 function medF(){return frOf(PH());}
-function medBar(){return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><div class="note grow" id="medMsg" style="font-weight:600;flex:1"></div><button class="btn sm" data-act="medReset" style="flex:none">↺ Marcar de nuevo</button></div>`;}
+function medBar(){return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><div class="note grow" id="medMsg" style="font-weight:600;flex:1"></div><button class="btn sm ${encAddMode?'pri':''}" data-act="encAddFoto" style="flex:none">🔌 Enchufe</button><button class="btn sm" data-act="medReset" style="flex:none">↺ Marcar de nuevo</button></div>`;}
 function frSel(ph){const pi=PI();return `<label class="note" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">Frente<select class="in" id="phFr" style="flex:1;min-width:0;font-size:16px;padding:8px"><option value="">— Ninguno (foto general) —</option>${pi.frentes.map((f,i)=>`<option value="${f.id}" ${ph&&f.id===ph.fr?'selected':''}>${esc(f.name||'Frente '+(i+1))}</option>`).join('')}<option value="__new">+ Nuevo frente</option></select></label>`;}
 function medMsg(){const el=$('#medMsg');if(!el)return;const k=medNext(PH());el.style.color=k?'#c2410c':'';
-  el.textContent=k?(MSTEPS.findIndex(x=>x[0]===k)+1)+'/4 · '+MSTEPS.find(x=>x[0]===k)[1]+'.':'Escribe cada medida en su casilla. Si hace falta, arrastra las esquinas o el punto rojo (cruce).';}
+  el.textContent=k?(MSTEPS.findIndex(x=>x[0]===k)+1)+'/4 · '+MSTEPS.find(x=>x[0]===k)[1]+'.':(encAddMode?'Toca en la foto donde está el enchufe.':'Escribe cada medida en cm en su casilla (p. ej. 223,5); en Medidas se guarda en mm. Toca un enchufe para ver sus cotas.')+' Si hace falta, arrastra las esquinas o el punto rojo (cruce).';}
 // Dibujo del rectángulo, la cruz y las flechas (solo en pantalla, no sale en la foto exportada)
 function drawMed(ctx,W,H,ph,u){
   if(medNext(ph)){const p=(ph.med&&ph.med.pts)||{};ctx.save();
@@ -1356,6 +1366,13 @@ function drawMed(ctx,W,H,ph,u){
   for(const k in lay){const[a,b]=lay[k],A=I(...a),B=I(...b);line(A,B,PAIRC[k],2.2*u);
     const ang=Math.atan2(B[1]-A[1],B[0]-A[0]),L=9*u;ctx.fillStyle=PAIRC[k];ctx.beginPath();ctx.moveTo(B[0],B[1]);
     ctx.lineTo(B[0]-L*Math.cos(ang-.45),B[1]-L*Math.sin(ang-.45));ctx.lineTo(B[0]-L*Math.cos(ang+.45),B[1]-L*Math.sin(ang+.45));ctx.closePath();ctx.fill();}
+  // enchufes del frente
+  const fr=frOf(ph);if(fr)(fr.enchufes||[]).forEach((e,i)=>{const uw=encUW(e,fr,ph);if(!uw)return;const P0=I(uw[0],uw[1]),n=+e.n||1,sp=15*u,sel=i===selEnc;
+    if(sel){const ct=encCotas(uw,m.c);for(const k of ['h','v']){const A=I(...ct[k][0]),B=I(...ct[k][1]);line(A,B,'#a16207',2*u);
+      const ang=Math.atan2(B[1]-A[1],B[0]-A[0]),L=8*u;ctx.fillStyle='#a16207';ctx.beginPath();ctx.moveTo(B[0],B[1]);ctx.lineTo(B[0]-L*Math.cos(ang-.45),B[1]-L*Math.sin(ang-.45));ctx.lineTo(B[0]-L*Math.cos(ang+.45),B[1]-L*Math.sin(ang+.45));ctx.closePath();ctx.fill();}}
+    for(let j=0;j<n;j++){const o=(j-(n-1)/2)*sp,x=P0[0]+(e.ori==='v'?0:o),y=P0[1]+(e.ori==='v'?o:0);
+      ctx.fillStyle=sel?'rgba(37,99,235,.95)':'rgba(37,99,235,.75)';ctx.strokeStyle='#fff';ctx.lineWidth=(sel?2.5:1.5)*u;ctx.beginPath();ctx.arc(x,y,6.5*u,0,7);ctx.fill();ctx.stroke();}
+    ctx.fillStyle='#fff';ctx.font=`700 ${9*u}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('E'+(i+1),P0[0],P0[1]-(n>1&&e.ori==='v'?(n/2+.6)*sp:12*u));});
   // tiradores: esquinas (blancas) y cruce (rojo)
   const hs=medHandles(ph);
   for(const k in hs){const q=P2(hs[k]);
@@ -1367,19 +1384,57 @@ function drawMed(ctx,W,H,ph,u){
   ctx.restore();
 }
 // Casillas sobre la foto, colocadas con la perspectiva
+// ===== Enchufes en la foto =====
+// e.pos={ph:id de la foto,u,w}: sitio del enchufe dentro del rectángulo. Si no lo tiene, se estima con las medidas del frente.
+let encAddMode=false,selEnc=null;
+function encUW(e,f,ph){if(e.pos&&e.pos.ph===ph.id)return[e.pos.u,e.pos.w];
+  const m=ph.med,[cu,cw]=m.c,M=k=>num(f.m&&f.m[k]),h=num(e.h),v=num(e.v);if(h==null||v==null)return null;
+  const Lm=M('lt')||M('lb'),Rm=M('rt')||M('rb'),Um=M('ul')||M('ur'),Dm=M('dl')||M('dr');
+  const u=e.lado==='izq'?(Lm?cu-h/Lm*cu:null):(Rm?cu+h/Rm*(1-cu):null),w=e.vpos==='abajo'?(Dm?cw+v/Dm*(1-cw):null):(Um?cw-v/Um*cw:null);
+  return u==null||w==null?null:[u,w];}
+function encCotas(uw,c){const[u,w]=uw,[cu,cw]=c;return{h:[[cu,w],[u,w]],v:[[u,cw],[u,w]]};}
+function encSetSide(e,uw,c){e.lado=uw[0]<c[0]?'izq':'dcha';e.vpos=uw[1]<c[1]?'arriba':'abajo';}
+function encListHTML(f){return (f.enchufes||[]).map((e,i)=>`<button class="item" data-act="editEnc" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">E${i+1} · ${esc(ENT[e.n]||'sencillo')}</div><div class="s">${esc(encDesc(e).split(': ')[1])}</div></div><span class="chev">›</span></button>`).join('');}
+// tras cambiar un enchufe desde la foto: refresca la lista y la pieza sin volver a pintar toda la pantalla
+function encRefresh(){if(route.v!=='frente')return;renderPrev();const l=$('#encList'),f=F();if(l&&f)l.innerHTML=encListHTML(f);
+  const hd=document.querySelector('[data-fold="enc"] span');if(hd&&f)hd.textContent='Enchufes'+((f.enchufes||[]).length?' ('+f.enchufes.length+')':'');}
 function placeMedInputs(){
   const lay=$('#medLay'),cv=$('#cv');if(!lay||!cv)return;const ph=PH(),h=medOn()?medH(ph):null,f=h&&medF();
   if(!h||!f){lay.innerHTML='';return;}
   const w=cv.clientWidth,hh=cv.clientHeight;
   for(const k of KEYS){let ip=lay.querySelector(`[data-mk="${k}"]`);
-    if(!ip){ip=document.createElement('input');ip.dataset.mk=k;ip.className='in';ip.setAttribute('inputmode','decimal');ip.setAttribute('autocomplete','off');ip.placeholder={ul:'Techo',ur:'Techo',dl:'Mueble',dr:'Mueble',lt:'Pared',lb:'Pared',rt:'Pared',rb:'Pared'}[k];
+    if(!ip){ip=document.createElement('input');ip.dataset.mk=k;ip.className='in';ip.setAttribute('inputmode','decimal');ip.setAttribute('autocomplete','off');ip.placeholder={ul:'Techo',ur:'Techo',dl:'Mueble',dr:'Mueble',lt:'Pared',lb:'Pared',rt:'Pared',rb:'Pared'}[k]+' cm';
       ip.style.border='3px solid '+PAIRC[k];
-      ip.oninput=()=>{const f=medF(),p=P();if(!f||!p)return;f.m=f.m||{};const v=ip.value.trim().replace(/\s+/g,'');f.m[k]=v===''?null:v;Store.save(p);
+      ip.oninput=()=>{const f=medF(),p=P();if(!f||!p)return;f.m=f.m||{};const cm=num(ip.value.trim().replace(/\s+/g,''));const v=cm==null?'':String(Math.round(cm*100)/10);f.m[k]=v===''?null:v;Store.save(p);
         if(route.v==='frente'&&F()===f){const o=document.querySelector(`input[data-k="${k}"]`);if(o){o.value=v;o.classList.toggle('miss',num(v)==null);}renderPrev();}};
       lay.appendChild(ip);}
-    if(document.activeElement!==ip){const v=f.m&&f.m[k];ip.value=v==null?'':v;}
+    if(document.activeElement!==ip){const v=num(f.m&&f.m[k]);ip.value=v==null?'':fmt(v/10);}   // en la foto, en cm
     const q=h(...medLayout(ph.med.c)[k][2]),x=q[0]*w*VIEW.z+VIEW.tx,y=q[1]*hh*VIEW.z+VIEW.ty;
-    ip.style.left=(x-35)+'px';ip.style.top=(y-17)+'px';ip.style.display=(x<-30||y<-20||x>w+30||y>hh+20)?'none':'';}
+    ip.style.left=(x-35)+'px';ip.style.top=(y-17)+'px';ip.style.display=(x<-30||y<-20||x>w+30||y>hh+20)?'none':'';
+    ip.style.opacity=selEnc!=null?'.3':'';}   // con un enchufe elegido, las medidas quedan atenuadas
+  // enchufe seleccionado: sus dos cotas en cm y los botones de tipo
+  const toS=q=>[q[0]*w*VIEW.z+VIEW.tx,q[1]*hh*VIEW.z+VIEW.ty];
+  const e=selEnc!=null&&f.enchufes?f.enchufes[selEnc]:null,uw=e&&encUW(e,f,ph);
+  lay.querySelectorAll('[data-ek],#encChips').forEach(x=>{if(!uw||x.dataset.ei!==String(selEnc))x.remove();});
+  if(!uw)return;
+  const ct=encCotas(uw,ph.med.c);
+  for(const k of ['h','v']){let ip=lay.querySelector(`[data-ek="${k}"]`);
+    if(!ip){ip=document.createElement('input');ip.dataset.ek=k;ip.dataset.ei=String(selEnc);ip.className='in';ip.setAttribute('inputmode','decimal');ip.setAttribute('autocomplete','off');
+      ip.placeholder=k==='h'?'↔ cm':'↕ cm';ip.style.border='3px solid #a16207';ip.style.zIndex='2';
+      ip.oninput=()=>{const f=medF(),e=f&&f.enchufes[selEnc];if(!e)return;const cm=num(ip.value.trim().replace(/\s+/g,''));e[k]=cm==null?'':String(Math.round(cm*100)/10);Store.save(P());drawCanvas();encRefresh();};
+      lay.appendChild(ip);}
+    if(document.activeElement!==ip){const v=num(e[k]);ip.value=v==null?'':fmt(v/10);}
+    const[a,b]=ct[k],mid=h((a[0]+b[0])/2,(a[1]+b[1])/2),[x,y]=toS(mid);ip.style.left=(x-35)+'px';ip.style.top=(y-17+(k==='h'?-20:0))+'px';}
+  let ch=lay.querySelector('#encChips');
+  if(!ch){ch=document.createElement('div');ch.id='encChips';ch.dataset.ei=String(selEnc);
+    ch.style.cssText='position:absolute;z-index:3;pointer-events:auto;display:flex;gap:3px;background:rgba(255,255,255,.95);border-radius:8px;padding:3px;box-shadow:0 2px 6px rgba(0,0,0,.3)';
+    ch.onclick=ev=>{const b=ev.target.closest('[data-ec]');if(!b)return;ev.preventDefault();const f=medF(),e=f&&f.enchufes[selEnc];if(!e)return;const c=b.dataset.ec;
+      if(c==='del'){f.enchufes.splice(selEnc,1);selEnc=null;}else if(c==='ok'){selEnc=null;}else if(c==='h'||c==='v')e.ori=c;else e.n=+c;
+      Store.save(P());drawCanvas();encRefresh();};
+    lay.appendChild(ch);}
+  const bs=(c,t,on)=>`<button type="button" data-ec="${c}" style="min-width:30px;padding:5px 6px;border-radius:6px;border:1px solid #cbd5e1;font-weight:700;font-size:14px;${on?'background:#2563eb;color:#fff;border-color:#2563eb':'background:#fff;color:#111827'}">${t}</button>`;
+  ch.innerHTML=[1,2,3,4].map(n=>bs(String(n),n,(+e.n||1)===n)).join('')+((+e.n||1)>1?bs('h','↔',e.ori!=='v')+bs('v','↕',e.ori==='v'):'')+bs('del','🗑',false)+bs('ok','✓',false);
+  const[ex,ey]=toS(h(uw[0],uw[1]));ch.style.left=Math.max(2,Math.min(w-ch.offsetWidth-2,ex-ch.offsetWidth/2))+'px';ch.style.top=(ey+22)+'px';
 }
 function q1(v){return Math.round(v*100)/100;}   // coordenadas con 2 decimales (0-1000): trazos finos aunque se amplíe mucho
 function segDist(px,py,x1,y1,x2,y2){const dx=x2-x1,dy=y2-y1,l=dx*dx+dy*dy;let t=l?((px-x1)*dx+(py-y1)*dy)/l:0;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(x1+t*dx),py-(y1+t*dy));}
@@ -2172,6 +2227,8 @@ const A={
   ffCam(){pickPhoto('#fCam',{add:true,fr:route.f});},ffGal(){pickPhoto('#fGal',{add:true,fr:route.f});},
   ffPrev(){if(PHI>0){PHI--;VIEW={z:1,tx:0,ty:0};render();}},ffNext(){if(PHI<frPhotos(F()).length-1){PHI++;VIEW={z:1,tx:0,ty:0};render();}},
   ffOpen(){const ph=PH(),pi=PI();if(!ph)return;const back={...route};go({v:'foto',p:route.p,pi:route.pi,i:pi.fotos.indexOf(ph),back});},
+  encAddFoto(d,b){const ph=PH();if(!ph||medNext(ph)||!medH(ph)){toast('Marca antes las 4 puntas del láser');return;}encAddMode=!encAddMode;selEnc=null;
+    const eb=document.querySelector('[data-act=encAddFoto]');if(eb)eb.classList.toggle('pri',encAddMode);medMsg();drawCanvas();if(encAddMode)toast('Toca en la foto donde está el enchufe');},
   medReset(){const ph=PH();if(ph){ph.med={pts:{}};Store.save(P());render();}},
   dgoma(){drawTool=drawTool==='goma'?'pen':'goma';render();},
   cotasReset(){const f=F();undoPush();f.cp={};Store.save(P());drawCanvas();},
