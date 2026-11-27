@@ -1378,7 +1378,9 @@ function medBar(){return `<div class="note" id="medMsg" style="font-weight:600;m
 // cambiar (o quitar) el frente de una foto
 function bindFrSel(){const mf=$('#phFr');if(!mf)return;mf.onchange=()=>{const pi=PI(),ph=PH();if(!ph)return;const old=ph.fr;
   if(mf.value==='__new'){const f=mkFrente(pi);ph.fr=f.id;if(!ph.med)ph.med={pts:{}};if(route.v==='foto')drawTool='med';toast('Frente creado. Marca las 4 puntas del láser');}else ph.fr=mf.value||null;
-  if(!ph.fr&&drawTool==='med'&&route.v==='foto')drawTool='mover';Store.save(P());
+  if(!ph.fr&&drawTool==='med'&&route.v==='foto')drawTool='mover';
+  if(ph.fr&&route.v==='foto'){if(!ph.med)ph.med={pts:{}};drawTool='med';if(medNext(ph))toast('Marca las 4 puntas del láser en la foto');}   // al asignar frente: se activa el marcado
+  Store.save(P());
   if(route.v==='frente'&&ph.fr!==old){// la foto deja este frente: si va a otro, se abre ese frente; si queda general, se queda aquí
     if(ph.fr){const k=frPhotos(frOf(ph)).indexOf(ph);go({v:'frente',p:route.p,pi:route.pi,f:ph.fr});if(k>0){PHI=k;render();}toast('Foto pasada a '+frOf(ph).name);}
     else{PHI=0;VIEW={z:1,tx:0,ty:0};render();toast('La foto ya no es de este frente; queda en las fotos del piso');}return;}
