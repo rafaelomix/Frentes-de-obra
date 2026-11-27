@@ -904,7 +904,8 @@ function renderPromo(app){
   <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">${foldHead('ploc','📍 Ubicación de la obra'+(loc.txt?' · '+esc(loc.txt):''))}<div class="${foldCls('ploc')}" data-foldc="ploc" style="margin-top:8px">
    <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
-   <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div></div></div></div>
+   <div class="grid2"><button class="btn sm" data-act="locSave">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav">🧭 Navegar a la obra</button></div>
+   <button class="btn sm full" data-act="locWa" style="margin-top:8px;background:#25d366;color:#fff;border-color:#25d366">💬 Enviar ubicación por WhatsApp</button></div></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     const fph=(allPhotos(pi)[0]||{}).photo;
@@ -1976,6 +1977,13 @@ const A={
     const dest=l.lat!=null?l.lat+','+l.lng:txt;
     if(!dest){toast('Guarda la posición o escribe la dirección de la obra');return;}
     window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest),'_blank');
+  },
+  locWa(){
+    const p=P(),l=p.loc||{},lt=$('#locTxt'),txt=(lt&&lt.value.trim())||l.txt||'';
+    if(l.lat==null&&!txt){toast('Guarda la posición o escribe la dirección de la obra');return;}
+    const url='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(l.lat!=null?l.lat+','+l.lng:txt);
+    const msg='📍 Obra: '+p.title+(txt?'\n'+txt:'')+'\n'+url;
+    window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
   },
   addCop(){INLINE_HOST=$('#copHost');copForm(null);},
   editCop(d){INLINE_HOST=$('#copHost');copForm(+d.i);},
