@@ -1478,6 +1478,12 @@ function placeMedInputs(){
   const lay=$('#medLay'),cv=$('#cv');if(!lay||!cv)return;const ph=PH(),h=medOn()?medH(ph):null,f=h&&medF();
   if(!h||!f){lay.innerHTML='';return;}
   const w=cv.clientWidth,hh=cv.clientHeight;
+  // tiradores (esquinas y cruce) en pantalla: ninguna casilla puede quedar encima de ellos
+  const HS=Object.values(medHandles(ph)).map(q=>[q[0]*w*VIEW.z+VIEW.tx,q[1]*hh*VIEW.z+VIEW.ty]),CEN=(()=>{const c=h(.5,.5);return[c[0]*w*VIEW.z+VIEW.tx,c[1]*hh*VIEW.z+VIEW.ty];})();
+  const nudge=(l,t,bw,bh)=>{const R=26;for(let it=0;it<3;it++){let moved=false;for(const H of HS){
+      const nx=Math.max(l,Math.min(H[0],l+bw)),ny=Math.max(t,Math.min(H[1],t+bh)),d=Math.hypot(H[0]-nx,H[1]-ny);
+      if(d<R){let vx=CEN[0]-H[0],vy=CEN[1]-H[1];const L=Math.hypot(vx,vy)||1;vx/=L;vy/=L;const need=R-d+2+(d===0?Math.max(bw,bh)/2:0);l+=vx*need;t+=vy*need;moved=true;}}
+      if(!moved)break;}return[l,t];};
   for(const k of KEYS){let ip=lay.querySelector(`[data-mk="${k}"]`);
     if(!ip){ip=document.createElement('input');ip.dataset.mk=k;ip.className='in';ip.setAttribute('inputmode','decimal');ip.setAttribute('autocomplete','off');ip.placeholder={ul:'Techo',ur:'Techo',dl:'Mueble',dr:'Mueble',lt:'Pared',lb:'Pared',rt:'Pared',rb:'Pared'}[k]+' cm';
       ip.style.border='3px solid '+PAIRC[k];
@@ -1486,7 +1492,7 @@ function placeMedInputs(){
       lay.appendChild(ip);}
     if(document.activeElement!==ip){const v=num(f.m&&f.m[k]);ip.value=v==null?'':fmt(v/10);}   // en la foto, en cm
     const q=h(...medLayout(ph.med.c)[k][2]),x=q[0]*w*VIEW.z+VIEW.tx,y=q[1]*hh*VIEW.z+VIEW.ty;
-    ip.style.left=(x-35)+'px';ip.style.top=(y-17)+'px';ip.style.display=(x<-30||y<-20||x>w+30||y>hh+20)?'none':'';
+    {const[l,t]=nudge(x-35,y-17,70,34);ip.style.left=l+'px';ip.style.top=t+'px';}ip.style.display=(x<-30||y<-20||x>w+30||y>hh+20)?'none':'';
     ip.style.opacity=selEnc!=null?'.3':'';}   // con un enchufe elegido, las medidas quedan atenuadas
   const toS=q=>[q[0]*w*VIEW.z+VIEW.tx,q[1]*hh*VIEW.z+VIEW.ty];
   // modo descuentos: una etiqueta por lado y el panel del lado elegido
@@ -1495,7 +1501,7 @@ function placeMedInputs(){
     for(const k of ['t','b','l','r']){let b=lay.querySelector(`[data-desc="${k}"]`);
       if(!b){b=document.createElement('button');b.type='button';b.dataset.desc=k;b.className='descchip';b.onclick=ev=>{ev.preventDefault();descSide=descSide===k?null:k;placeMedInputs();};lay.appendChild(b);}
       b.textContent=descLabel(f,k);b.classList.toggle('on',descSide===k);const vi=vistoOf(f),e=esqOf(f);b.classList.toggle('vis',!!((k==='l'||k==='r')&&(vi[k]||e[k])));
-      const[x,y]=toS(h(...DESC_UW[k]));b.style.left=(x-b.offsetWidth/2)+'px';b.style.top=(y-15)+'px';}
+      const[x,y]=toS(h(...DESC_UW[k]));{const[l,t]=nudge(x-b.offsetWidth/2,y-15,b.offsetWidth,30);b.style.left=l+'px';b.style.top=t+'px';}}
     let pn=lay.querySelector('#descPanel');
     if(!descSide){if(pn)pn.remove();}
     else{if(!pn||pn.dataset.k!==descSide){if(pn)pn.remove();pn=document.createElement('div');pn.id='descPanel';pn.dataset.k=descSide;lay.appendChild(pn);
@@ -1520,7 +1526,7 @@ function placeMedInputs(){
       ip.oninput=()=>{const f=medF(),e=f&&f.enchufes[selEnc];if(!e)return;const cm=num(ip.value.trim().replace(/\s+/g,''));e[k]=cm==null?'':String(Math.round(cm*100)/10);Store.save(P());drawCanvas();encRefresh();};
       lay.appendChild(ip);}
     if(document.activeElement!==ip){const v=num(e[k]);ip.value=v==null?'':fmt(v/10);}
-    const[a,b]=ct[k],mid=h((a[0]+b[0])/2,(a[1]+b[1])/2),[x,y]=toS(mid);ip.style.left=(x-35)+'px';ip.style.top=(y-17+(k==='h'?-20:0))+'px';}
+    const[a,b]=ct[k],mid=h((a[0]+b[0])/2,(a[1]+b[1])/2),[x,y]=toS(mid);{const[l,t]=nudge(x-35,y-17+(k==='h'?-20:0),70,34);ip.style.left=l+'px';ip.style.top=t+'px';}}
   let ch=lay.querySelector('#encChips');
   if(!ch){ch=document.createElement('div');ch.id='encChips';ch.dataset.ei=String(selEnc);
     ch.style.cssText='position:absolute;z-index:3;pointer-events:auto;display:flex;gap:3px;background:rgba(255,255,255,.95);border-radius:8px;padding:3px;box-shadow:0 2px 6px rgba(0,0,0,.3)';
