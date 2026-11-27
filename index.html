@@ -931,15 +931,15 @@ function renderPromo(app){
    <input class="in" id="locTxt" placeholder="Dirección de la obra" value="${esc(loc.txt||'')}">
    <div class="note" id="locGps" style="margin:6px 2px 8px">${loc.lat!=null?'📍 Posición guardada: '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+(loc.acc?' (±'+Math.round(loc.acc)+' m)':''):'Sin posición GPS guardada'}</div>
    <div style="display:flex;gap:6px"><button class="btn sm" data-act="locSave" style="flex:1">📍 Guardar posición actual</button><button class="btn sm pri" data-act="locNav" style="flex:1">🧭 Navegar a la obra</button><button class="btn sm" data-act="locWa" title="Enviar por WhatsApp" aria-label="Enviar por WhatsApp" style="flex:0 0 auto;padding:6px 10px;background:#25d366;color:#fff;border-color:#25d366">💬</button>${navigator.share?'<button class="btn sm" data-act="locShare" title="Compartir" aria-label="Compartir" style="flex:0 0 auto;padding:6px 10px">📤</button>':''}</div></div></div></div>
+  <div class="card">${foldHead('plano','Planos'+((p.planos||[]).length?' ('+p.planos.length+')':''))}<div class="${foldCls('plano')}" data-foldc="plano" style="margin-top:8px">
+   ${(p.planos||[]).map((pl,i)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><button class="item" data-act="planOpen" data-i="${i}" style="padding:10px;flex:1;margin:0"><div class="grow"><div class="t" style="font-size:15px">📐 ${esc(pl.name)}</div><div class="s">${esc((pl.ext||'').toUpperCase())}${pl.size?' · '+(pl.size/1048576).toFixed(1).replace('.',',')+' MB':''}</div></div><span class="chev">›</span></button><button class="btn sm dang" data-act="planDel" data-i="${i}" aria-label="Borrar plano">🗑</button></div>`).join('')}
+   <button class="btn full" data-act="planUp">⬆ Subir planos (DWG, DXF o PDF)</button></div></div>
   <h2>Pisos</h2>`+
   (p.pisos.length?p.pisos.map(pi=>{const ok=pi.frentes.filter(f=>filled(f)===8).length;
     const fph=(allPhotos(pi)[0]||{}).photo;
     return `<button class="item" data-act="openPiso" data-id="${pi.id}">${fph?`<img class="thumb" data-ph="${esc(JSON.stringify(fph))}" alt="">`:`<div class="thumb">Sin foto</div>`}<div class="grow"><div class="t">${esc(pi.title)}</div><div class="s">${pi.fecha?'📅 '+esc(fFecha(pi.fecha))+' · ':''}${pi.frentes.length} frente${pi.frentes.length==1?'':'s'} · ${ok} con medidas completas</div></div><span class="chev">›</span></button>`;}).join('')
    :`<div class="empty">Sin pisos todavía.</div>`)+
   `<button class="btn pri full" data-act="newPiso" style="margin-top:4px">+ Añadir piso</button>
-  <div class="card" style="margin-top:12px">${foldHead('plano','Planos'+((p.planos||[]).length?' ('+p.planos.length+')':''))}<div class="${foldCls('plano')}" data-foldc="plano" style="margin-top:8px">
-   ${(p.planos||[]).map((pl,i)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><button class="item" data-act="planOpen" data-i="${i}" style="padding:10px;flex:1;margin:0"><div class="grow"><div class="t" style="font-size:15px">📐 ${esc(pl.name)}</div><div class="s">${esc((pl.ext||'').toUpperCase())}${pl.size?' · '+(pl.size/1048576).toFixed(1).replace('.',',')+' MB':''}</div></div><span class="chev">›</span></button><button class="btn sm dang" data-act="planDel" data-i="${i}" aria-label="Borrar plano">🗑</button></div>`).join('')}
-   <button class="btn full" data-act="planUp">⬆ Subir planos (DWG, DXF o PDF)</button></div></div>
   <div class="card" style="margin-top:12px">${foldHead('pexp','Exportar')}<div class="${foldCls('pexp')}" data-foldc="pexp" style="margin-top:8px">
    <div style="font-weight:600;margin:0 2px 6px">Todos los DXF de los pisos${qh('Un archivo DXF por cada piso, todos juntos.')}</div>
    <div class="grid2"><button class="btn pri" data-act="dxfAllPisos">⬇ Descargar</button>${mailBtn('dxfAllPisos')}</div>
