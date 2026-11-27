@@ -1045,7 +1045,7 @@ function renderFrente(app){
     <div class="grid2">${[['t','⬆ Arriba'],['b','⬇ Abajo']].map(([k,l])=>`<label class="note">${l}<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt((f.cfg?f.cfg.cuts:p.cuts)[k]))}" style="display:block;width:100%;margin-top:4px"></label>`).join('')}</div>
     <div class="grid2" style="margin-top:8px">${[['l','⬅ Izquierda'],['r','Derecha ➡']].map(([k,t])=>{const vi=vistoOf(f)[k];return `<div style="border:1px solid var(--line);border-radius:10px;padding:8px"><div style="font-weight:600;margin-bottom:6px">${t}</div>
       <label class="note">Descuento<input class="in" inputmode="decimal" data-fcut="${k}" value="${esc(fmt(vi||esqOf(f)[k]?0:(f.cfg?f.cfg.cuts:p.cuts)[k]))}" ${vi||esqOf(f)[k]?'disabled':''} style="display:block;width:100%;margin-top:2px"></label>
-      <label class="note" style="display:block;margin-top:6px">Esquina<select class="in" data-esq="${k}" style="display:block;width:100%;margin-top:2px;font-size:18px;padding:10px">${(()=>{const cur=num(String((f.esq&&f.esq[k])||'0').replace('−','-'))||0;const opts=[0,-14,14,-22,22];if(!opts.includes(cur))opts.push(cur);
+      <label class="note" style="display:block;margin-top:6px">Esquina<select class="in" data-esq="${k}" style="display:block;width:100%;margin-top:2px;font-size:18px;padding:10px">${(()=>{const cur=num(String((f.esq&&f.esq[k])||'0').replace('−','-'))||0;const opts=[0,-2,2,-14,14,-22,22];if(!opts.includes(cur))opts.push(cur);
       return opts.map(v=>`<option value="${v>0?'+'+v:v}" ${v===cur?'selected':''}>${v===0?'0':(v>0?'+':'−')+Math.abs(v)}</option>`).join('');})()}</select></label>
       <button type="button" class="btn full ${vi?'on':''}" data-visto="${k}" style="margin-top:8px;${vi?'background:#ea580c;color:#fff;border-color:#ea580c':''}">${vi?'✓ ':''}Visto</button></div>`;}).join('')}</div></div>
    <button class="btn pri full" data-act="saveFrente" style="margin-top:10px">💾 Guardar medidas</button></div></div>
@@ -1471,7 +1471,7 @@ function descPanelHTML(f,k){const p=P(),base=(f.cfg?f.cfg.cuts:p.cuts)[k],e=esqO
   let h=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><b style="flex:1">${T}</b><button type="button" data-dp="ok" class="dpb">✓</button></div>
     <label style="display:flex;align-items:center;gap:6px;font-size:13px">Descuento<input class="in" data-dpcut="${k}" inputmode="decimal" value="${esc(fmt(lock?0:base))}" ${lock?'disabled':''} style="width:70px;padding:6px;font-size:16px;text-align:center"> mm</label>`;
   if(k==='l'||k==='r'){const cur=e[k]||0;
-    h+=`<div style="font-size:13px;margin:8px 0 4px">Esquina</div><div style="display:flex;gap:4px;flex-wrap:wrap">${[0,-14,14,-22,22].map(v=>`<button type="button" class="dpb ${v===cur?'on':''}" data-dpesq="${v>0?'+'+v:v}">${v===0?'0':(v>0?'+':'−')+Math.abs(v)}</button>`).join('')}</div>
+    h+=`<div style="font-size:13px;margin:8px 0 4px">Esquina</div><div style="display:flex;gap:4px;flex-wrap:wrap">${[0,-2,2,-14,14,-22,22].map(v=>`<button type="button" class="dpb ${v===cur?'on':''}" data-dpesq="${v>0?'+'+v:v}">${v===0?'0':(v>0?'+':'−')+Math.abs(v)}</button>`).join('')}</div>
       <button type="button" class="dpb ${vi[k]?'vis':''}" data-dpvis="1" style="width:100%;margin-top:8px">${vi[k]?'✓ ':''}Visto</button>`;}
   return h;}
 function placeMedInputs(){
