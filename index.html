@@ -975,12 +975,18 @@ function renderPiso(app){
     <div class="qhrow">${qh('Remates laterales del piso. Largo = medida de pared + ajuste (−14 por defecto: 12 de grueso + 2 de holgura). Alto 45 por defecto. Salen en el DXF del piso, junto a los frentes.')}</div>
     <div id="copHost"></div>
     <button class="btn full" data-act="addCop">+ Añadir copete</button>
-    ${cps.length?`<div class="prev" style="margin-top:10px">${copSVG(cps)}</div>`:''}
     ${cps.map((c,i)=>{return `<button class="item" data-act="editCop" data-i="${i}" style="padding:10px"><div class="grow"><div class="t" style="font-size:15px">C${i+1}</div><div class="s">${esc(copDesc(c))}</div></div><span class="chev">›</span></button>`;}).join('')}</div></div>
+   <div class="card">${foldHead('pieza','Pieza resultante')}<div class="${foldCls('pieza')}" data-foldc="pieza" style="margin-top:6px">
+    ${pi.frentes.map((f,i)=>`<div class="pzf" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="flex:1">${esc(f.name||'Frente '+(i+1))}</b><button class="btn sm" data-act="openFrente" data-id="${f.id}">Abrir ›</button></div>
+      <div class="note" data-pzcut="${f.id}" style="margin-bottom:6px"></div><div class="prev" data-pz="${f.id}"></div></div>`).join('')||'<div class="note">Todavía no hay frentes.</div>'}
+    ${cps.length?`<div style="border-top:1px solid var(--line);padding-top:10px"><b>Copetes</b><div class="prev" style="margin-top:6px">${copSVG(cps)}</div>
+      <table class="dims">${cps.map((c,i)=>`<tr><td>C${i+1} · ${esc(copDesc(c).split(' · ')[0])}</td><td>${esc(copTxt(copGeom(c,null)))}</td></tr>`).join('')}</table></div>`:''}
+   </div></div>
    <div class="card">${foldHead('pisoexp','Exportar DXF del piso')}<div class="${foldCls('pisoexp')}" data-foldc="pisoexp" style="margin-top:8px"><div class="grid2"><button class="btn pri" data-act="dxfPiso">⬇ Descargar</button>${mailBtn('dxfPiso')}</div></div></div>
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delPiso">Borrar piso</button>`;
   app.querySelectorAll('img[data-ph]').forEach(async im=>{const u=await Store.thumbURL(JSON.parse(im.dataset.ph));if(u)im.src=u;
     if(im.dataset.medi!=null){const x=pi.fotos[+im.dataset.medi],d=await medThumb(x);if(d)im.src=d;}});
+  pi.frentes.forEach(f=>{const el=app.querySelector(`[data-pz="${f.id}"]`);if(el)renderPrev(f,el,app.querySelector(`[data-pzcut="${f.id}"]`));});
   const pn=$('#piNota');if(pn)pn.oninput=()=>{const p=P(),pi=PI();if(!p||!pi)return;pi.nota=pn.value;Store.save(p);};
   setTimeout(()=>{if(route.v!=='piso'||inlineOpen)return;if(!foldOff('cop'))A.addCop();},0);
 }
@@ -1049,7 +1055,7 @@ function renderFrente(app){
     <div id="encList">${encListHTML(f)}</div>
     <details style="margin-top:10px"><summary class="note" style="cursor:pointer">⚙ Agujero Ø ${esc(fmt(cfgOf(p,f).dia))} · separación ${esc(fmt(cfgOf(p,f).sep))} mm</summary><div class="grid2" style="margin-top:6px"><label class="note">Ø agujero enchufe<input class="in" inputmode="decimal" data-fset="dia" value="${esc(fmt(cfgOf(p,f).dia))}"></label><label class="note">Separación entre ejes<input class="in" inputmode="decimal" data-fset="sep" value="${esc(fmt(cfgOf(p,f).sep))}"></label></div></details></div></div>
    
-   <div class="card">${foldHead('pieza','Pieza resultante')}<div class="${foldCls('pieza')}" data-foldc="pieza" style="margin-top:6px"><div class="note" id="cutnote" style="margin-bottom:8px"></div><div id="prev" class="prev"></div></div></div>
+
    ${mailChk()}
    <h2>&nbsp;</h2><button class="btn dang full" data-act="delFrente">Borrar frente</button>`;
   const du=$('#dictUnit');if(du)du.onchange=()=>{dictUnit=du.value;LS.set('fc_du',dictUnit);dictBanner();};
@@ -1094,9 +1100,9 @@ function renderFrente(app){
   setTimeout(()=>{if(route.v!=='frente'||inlineOpen)return;if(!foldOff('enc'))A.addEnc();},0);
 }
 
-function renderPrev(){
-  const el=$('#prev');if(!el)return;const p=P(),f=F(),cf=cfgOf(p,f),g=geom(f,cf.cuts);
-  const cn=$('#cutnote');if(cn){const vi=vistoOf(f),e=esqOf(f);cn.textContent=`Descuentos: arriba ${fmt(cf.cuts.t)}, abajo ${fmt(cf.cuts.b)}, izq ${fmt(cf.cuts.l)}, dcha ${fmt(cf.cuts.r)} mm`+(f.cfg?' (propios de este frente)':'')+(e.l||e.r?' · esquinas: '+[e.l?'izq '+fAj(e.l):'',e.r?'dcha '+fAj(e.r):''].filter(Boolean).join(', '):'')+(vi.l||vi.r?' · visto: '+[vi.l?'izq':'',vi.r?'dcha':''].filter(Boolean).join(' y '):'');}
+function renderPrev(fA,elA,cnA){
+  const el=elA||$('#prev');if(!el)return;const p=P(),f=fA||F();if(!f)return;const cf=cfgOf(p,f),g=geom(f,cf.cuts);
+  const cn=cnA||$('#cutnote');if(cn){const vi=vistoOf(f),e=esqOf(f);cn.textContent=`Descuentos: arriba ${fmt(cf.cuts.t)}, abajo ${fmt(cf.cuts.b)}, izq ${fmt(cf.cuts.l)}, dcha ${fmt(cf.cuts.r)} mm`+(f.cfg?' (propios de este frente)':'')+(e.l||e.r?' · esquinas: '+[e.l?'izq '+fAj(e.l):'',e.r?'dcha '+fAj(e.r):''].filter(Boolean).join(', '):'')+(vi.l||vi.r?' · visto: '+[vi.l?'izq':'',vi.r?'dcha':''].filter(Boolean).join(' y '):'');}
   if(!g){el.innerHTML=`<div class="empty">Faltan ${8-filled(f)} medida${8-filled(f)==1?'':'s'} para dibujar la pieza.</div>`;return;}
   const R=cf.dia/2,encs=(f.enchufes||[]).map((e,i)=>({i,e,g:encGeom(e,cf)})).filter(x=>x.g);
   const fs0=Math.max(bbox(g.meas).w,bbox(g.meas).h)/18;
